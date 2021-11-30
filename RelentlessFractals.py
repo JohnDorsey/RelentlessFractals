@@ -1,4 +1,4 @@
-
+#!/usr/bin/python3
 
 import time
 import math
@@ -663,7 +663,7 @@ def test_nonatree_mandelbrot(camera_pos, view_size, iter_limit, depth_limit):
 def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirectional_subsampling=1, count_scale=1):
     if bidirectional_subsampling != 1:
         assert linear_subsampling == 1
-    output_name="glitchy_polarsectbrot_RincabsGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
+    output_name="sectbrot_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen([increasedAbsVisitCountMatrix, increasedRealVisitCountMatrix, increasedImagVisitCountMatrix])
@@ -704,14 +704,16 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
             continue
         keptJourneyPointCount += len(constrainedJourney)
         
-        journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=crashlessPolarIntersection)
+        #journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=crashlessPolarIntersection)
+        journeySelfIntersections = gen_intersections(constrainedJourney)
         #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
         for point in journeySelfIntersections:
             screenPixel = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
             dotCount += 1
             try:
                 #visitCounterMatrix[screenPixel[1]][screenPixel[0]] += 1
-                if abs(point) > abs(seed):
+                #if abs(point) > abs(seed):
+                if True:
                     increasedAbsVisitCountMatrix[screenPixel[1]][screenPixel[0]] += count_scale
                 if point.real > seed.real:
                     increasedRealVisitCountMatrix[screenPixel[1]][screenPixel[0]] += count_scale
@@ -725,8 +727,8 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
 
 
 
-test_abberation([0], 0, 16384)
-#test_buddhabrot(-0.5+0j, 3+3j, 64, supersampling=4, bidirectional_subsampling=1, count_scale=1.5) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
+#test_abberation([0], 0, 16384)
+test_buddhabrot(0+0j, 4+4j, 64, supersampling=4, bidirectional_subsampling=1, count_scale=1.5) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 stall_pygame()
 
