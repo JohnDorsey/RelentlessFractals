@@ -13,7 +13,7 @@ MODULUS_OVERLAP_NUDGE = 2**-48
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((64,64))
+screen = pygame.display.set_mode((1024, 1024))
 
 
 
@@ -569,7 +569,7 @@ def test_abberation(text, scale, iterLimit):
 def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirectional_subsampling=1, count_scale=1):
     if bidirectional_subsampling != 1:
         assert linear_subsampling == 1
-    output_name="buddhabrot_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
+    output_name="buddhabrot_before2pixSep_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
@@ -604,7 +604,11 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
             drawingStats["errorCount"] += 1
             return None
     """
+    pixelWidth = abs(screen_to_complex((0,0), screen.get_size(), camera_pos, view_size, centered_sample=True) - screen_to_complex((1,0), screen.get_size(), camera_pos, view_size, centered_sample=True))
+    assert type(pixelWidth) == float
+    assert pixelWidth < 0.1, "is the screen really that small?"
     
+    prevConstrainedJourney = [0.0+0.0J] * iter_limit
     for i, x, y, seed in enumerate_flatly(get_seeds(supersize, camera_pos, view_size, centered_sample=False)):
         if x==0 and y%128 == 0:
             #print(testVar)
@@ -626,7 +630,18 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
         #journeySelfIntersections = gen_intersections(constrainedJourney)
         #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
         
-        visit_points_in_seq(constrainedJourney)
+        assert constrainedJourney[0] == 0, "differential mode code is not designed for this."
+        if i == 0:
+            print("in differential mode, the first point's journey is not drawn.")
+            # assert x == 0
+            # firstEverSeed = seed
+        else:
+            # if i == 1:
+            #    assert x == 1
+            #    # secondEverSeed = seed
+            #    # sampleWidth = abs(secondEverSeed-firstEverSeed)
+            visit_points_in_seq([pointPair[1] for pointPair in zip(prevConstrainedJourney, constrainedJourney) if abs(pointPair[1]-pointPair[0]) < 2*pixelWidth])
+        prevConstrainedJourney = constrainedJourney
                 
     specializedDraw()
     screenshot(name_prefix=output_name)
@@ -634,7 +649,7 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
 
 
 #test_abberation([0], 0, 16384)
-test_buddhabrot(0+0j, 4+4j, 64, supersampling=8, bidirectional_subsampling=1, count_scale=1) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
+test_buddhabrot(0+0j, 4+4j, 64, supersampling=4, bidirectional_subsampling=1, count_scale=4) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
 PygameDashboard.stall_pygame()
