@@ -569,7 +569,7 @@ def test_abberation(text, scale, iterLimit):
 def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirectional_subsampling=1, count_scale=1):
     if bidirectional_subsampling != 1:
         assert linear_subsampling == 1
-    output_name="sectbrot_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
+    output_name="buddhabrot_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
@@ -577,42 +577,12 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
     
     visitCountMatrix = construct_data(screen.get_size()[::-1]+(3,), default_value=0)
     
-    dotCount = 0
-    drawnDotCount = 0
-    journeyPointCount = 0
-    keptJourneyPointCount = 0
-    errorCounter = [0]
+    drawingStats = {"dotCount": 0, "drawnDotCount":0, "journeyPointCount":0, "keptJourneyPointCount":0, "errorCount":0}
     
-    def crashlessPolarIntersection(seg0, seg1):
-        try:
-            return polar_space_segment_intersection(seg0, seg1)
-        except AssertionError:
-            errorCounter[0] += 1
-            return None
-    
-    for i, x, y, seed in enumerate_flatly(get_seeds(supersize, camera_pos, view_size, centered_sample=False)):
-        if x==0 and y%128 == 0:
-            #print(testVar)
-            specializedDraw()
-            if y%128 == 0:
-                # print("journey points: {}. kept: {}.".format(journeyPointCount, keptJourneyPointCount))
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}ptskept{}of{}dotsdrawn{}errs_".format(y, supersize[1], keptJourneyPointCount, journeyPointCount, drawnDotCount, dotCount, errorCounter[0]))
-        if not (x%bidirectional_subsampling == 0 and y%bidirectional_subsampling == 0):
-            continue
-        journey = journeyFun(seed)
-        constrainedJourney = [item for item in constrain_journey(journey, iter_limit, 4)]
-        
-        journeyPointCount += len(constrainedJourney)
-        if len(constrainedJourney) >= iter_limit:
-            continue
-        keptJourneyPointCount += len(constrainedJourney)
-        
-        #journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=crashlessPolarIntersection)
-        journeySelfIntersections = gen_intersections(constrainedJourney)
-        #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
-        for point in journeySelfIntersections:
+    def visit_points_in_seq(input_seq):
+        for point in input_seq:
             screenPixel = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
-            dotCount += 1
+            drawingStats["dotCount"] += 1
             try:
                 currentCell = visitCountMatrix[screenPixel[1]][screenPixel[0]]
                 if True:
@@ -621,16 +591,50 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
                     currentCell[1] += count_scale
                 if point.imag > seed.imag:
                     currentCell[2] += count_scale
-                drawnDotCount += 1
+                drawingStats["drawnDotCount"] += 1
             except IndexError:
+                # drawnDotCount won't be increased.
                 pass
+    """
+    
+    def crashlessPolarIntersection(seg0, seg1):
+        try:
+            return polar_space_segment_intersection(seg0, seg1)
+        except AssertionError:
+            drawingStats["errorCount"] += 1
+            return None
+    """
+    
+    for i, x, y, seed in enumerate_flatly(get_seeds(supersize, camera_pos, view_size, centered_sample=False)):
+        if x==0 and y%128 == 0:
+            #print(testVar)
+            specializedDraw()
+            if y%128 == 0:
+                # print("journey points: {}. kept: {}.".format(journeyPointCount, keptJourneyPointCount))
+                screenshot(name_prefix=output_name+"{}of{}rows{}of{}ptskept{}of{}dotsdrawn{}errs_".format(y, supersize[1], drawingStats["keptJourneyPointCount"], drawingStats["journeyPointCount"], drawingStats["drawnDotCount"], drawingStats["dotCount"], drawingStats["errorCount"]))
+        if not (x%bidirectional_subsampling == 0 and y%bidirectional_subsampling == 0):
+            continue
+        journey = journeyFun(seed)
+        constrainedJourney = [item for item in constrain_journey(journey, iter_limit, 4)]
+        
+        drawingStats["journeyPointCount"] += len(constrainedJourney)
+        if len(constrainedJourney) >= iter_limit:
+            continue
+        drawingStats["keptJourneyPointCount"] += len(constrainedJourney)
+        
+        #journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=crashlessPolarIntersection)
+        #journeySelfIntersections = gen_intersections(constrainedJourney)
+        #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
+        
+        visit_points_in_seq(constrainedJourney)
+                
     specializedDraw()
     screenshot(name_prefix=output_name)
 
 
 
 #test_abberation([0], 0, 16384)
-test_buddhabrot(0+0j, 4+4j, 64, supersampling=4, bidirectional_subsampling=1, count_scale=1.5) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
+test_buddhabrot(0+0j, 4+4j, 64, supersampling=8, bidirectional_subsampling=1, count_scale=1) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
 PygameDashboard.stall_pygame()
