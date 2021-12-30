@@ -26,6 +26,16 @@ PygameDashboard.parent_module_exec = this_module_exec
 
 
 
+def shape_of(data_to_test):
+    result = []
+    while hasattr(data_to_test, "__len__"):
+        result.append(len(data_to_test))
+        if result[-1] == 0:
+            break
+        data_to_test = data_to_test[0]
+    return result
+
+
 
 
     
@@ -34,7 +44,7 @@ def assert_equals(thing0, thing1):
         if thing0-thing1 == 0:
             return
         elif abs(thing0-thing1) < 2**-36:
-            #print("warning: {} and {} are supposed to be equal.".format(thing0, thing1))
+            # print("warning: {} and {} are supposed to be equal.".format(thing0, thing1))
             return
         print("this test is failing soon.")
     if isinstance(thing0, tuple) and isinstance(thing1, tuple):
@@ -53,17 +63,45 @@ def screenshot(name_prefix="", name=None):
     pygame.image.save(screen, usedName)
     print("saving took {} seconds.".format(time.time()-startTime))
     
+    
+def enforce_tuple_length(input_tuple, length, default=None):
+    assert type(input_tuple) == tuple
+    if len(input_tuple) == length:
+        return input_tuple
+    elif len(input_tuple) < length:
+        return input_tuple + tuple(default for i in range(length-len(input_tuple)))
+    else:
+        return input_tuple[:length]
+    
 
-def draw_squished_ints_to_screen(channels):
+def draw_squished_ints_to_screen(channels, access_order=None):
+    # maybe this method shouldn't exist. Maybe image creation should happen in another process, like photo.py in GeodeFractals.
     startTime = time.time()
-    for y in range(len(channels[0])):
-        for x in range(len(channels[0][y])):
-            if x==0 and y%128 == 0:
-                pygame.display.flip()
-            color = (tuple(int(atan_squish_unsigned(channels[chi][y][x], 255)) for chi in range(len(channels))) + (0, 0, 0))[:3]
-            # assert max(color) < 256
-            # assert min(color) >= 0
-            screen.set_at((x,y), color)
+    
+    if access_order == "cyx":
+        colorDataGetter = lambda argX, argY, argC: channels[argC][argY][argX]
+        xSize, ySize, cSize = (len(channels[0][0]), len(channels[0]), len(channels))
+    elif access_order == "yxc":
+        colorDataGetter = lambda argX, argY, argC: channels[argY][argX][argC]
+        xSize, ySize, cSize = (len(channels[0]), len(channels), len(channels[0][0]))
+    else:
+        raise ValueError("unsupported access order.")
+    assert cSize == 3, shape_of(channels)
+    assert xSize != 3
+    assert ySize != 3
+        
+    try:
+        for y in range(ySize):
+            for x in range(xSize):
+                if x==0 and y%128 == 0:
+                    pygame.display.flip()
+                color = enforce_tuple_length(tuple(int(atan_squish_unsigned(colorDataGetter(x, y, chi), 255)) for chi in range(cSize)), 3, default=0)
+                # assert max(color) < 256
+                # assert min(color) >= 0
+                screen.set_at((x, y), color)
+    except IndexError as ie:
+        print("index error when (x, y)=({}, {}): {}.".format(x, y, ie))
+        exit(1)
     print("drawing squished ints to screen took {} seconds.".format(time.time()-startTime))
             
             
@@ -115,11 +153,11 @@ def enumerate_flatly(input_seq, start=0):
 def construct_data(size, default_value=None):
     assert len(size) > 0
     if len(size) == 1:
-        return [default_value for i in range(size[-1])]
+        return [default_value for i in range(size[0])]
     else:
-        return [construct_data(size[:-1], default_value=default_value) for i in range(size[-1])]
+        return [construct_data(size[1:], default_value=default_value) for i in range(size[0])]
 
-
+assert_equals(shape_of(construct_data([5,6,7])), [5,6,7])
 
 
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
@@ -534,18 +572,15 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
     output_name="sectbrot_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
     journeyFun = c_to_mandel_journey
     def specializedDraw():
-        draw_squished_ints_to_screen([increasedAbsVisitCountMatrix, increasedRealVisitCountMatrix, increasedImagVisitCountMatrix])
+        draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
     supersize = (screen.get_size()[0]*supersampling, screen.get_size()[1]*supersampling)
     
-    increasedAbsVisitCountMatrix = construct_data(screen.get_size(), default_value=0)
-    increasedRealVisitCountMatrix = construct_data(screen.get_size(), default_value=0)
-    increasedImagVisitCountMatrix = construct_data(screen.get_size(), default_value=0)
+    visitCountMatrix = construct_data(screen.get_size()[::-1]+(3,), default_value=0)
     
     dotCount = 0
     drawnDotCount = 0
     journeyPointCount = 0
     keptJourneyPointCount = 0
-    #errorCount = 0
     errorCounter = [0]
     
     def crashlessPolarIntersection(seg0, seg1):
@@ -579,14 +614,13 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
             screenPixel = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
             dotCount += 1
             try:
-                #visitCounterMatrix[screenPixel[1]][screenPixel[0]] += 1
-                #if abs(point) > abs(seed):
+                currentCell = visitCountMatrix[screenPixel[1]][screenPixel[0]]
                 if True:
-                    increasedAbsVisitCountMatrix[screenPixel[1]][screenPixel[0]] += count_scale
+                    currentCell[0] += count_scale
                 if point.real > seed.real:
-                    increasedRealVisitCountMatrix[screenPixel[1]][screenPixel[0]] += count_scale
+                    currentCell[1] += count_scale
                 if point.imag > seed.imag:
-                    increasedImagVisitCountMatrix[screenPixel[1]][screenPixel[0]] += count_scale
+                    currentCell[2] += count_scale
                 drawnDotCount += 1
             except IndexError:
                 pass
