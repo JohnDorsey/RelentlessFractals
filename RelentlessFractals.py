@@ -13,8 +13,11 @@ MODULUS_OVERLAP_NUDGE = 2**-48
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((256, 256))
 
+
+assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
+assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 
 import PygameDashboard
@@ -87,8 +90,8 @@ def draw_squished_ints_to_screen(channels, access_order=None):
     else:
         raise ValueError("unsupported access order.")
     assert cSize == 3, shape_of(channels)
-    assert xSize != 3
-    assert ySize != 3
+    assert xSize > 4
+    assert ySize > 4
         
     try:
         for y in range(ySize):
@@ -565,72 +568,55 @@ def test_abberation(text, scale, iterLimit):
         #    color,
         #)
     
+"""
+def modify_visit_count_matrix(visit_count_matrix, input_seq, camera_pos, view_size, count_scale):
+    for i, item in input_seq:
+        complexPoint, redInc, greenInc, blueInc = item
+        screenPixelX, screenPixelY = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
+        try:
+            currentCell = visit_count_matrix[screenPixelY][screenPixelX]
+            if redInc:
+                currentCell[0] += count_scale
+            if greenInc:
+                currentCell[1] += count_scale
+            if blueInc:
+                currentCell[2] += count_scale
+        except IndexError as ie:
+            pass
+"""
 
-def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirectional_subsampling=1, count_scale=1):
-    if bidirectional_subsampling != 1:
-        assert linear_subsampling == 1
-    output_name="buddhabrot_before2pixSep_RallGincrBinci_{}pos{}fov{}itr{}biSuper{}biSub{}count_".format(camera_pos, view_size, iter_limit, supersampling, bidirectional_subsampling, count_scale)
+def test_buddhabrot(camera_pos, view_size, iter_limit, bidirectional_supersampling=1, count_scale=1):
+    output_name="crosscrossbrot_below0.5pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itr{}biSuper{}count_".format(camera_pos, view_size, iter_limit, bidirectional_supersampling, count_scale)
+    
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-    supersize = (screen.get_size()[0]*supersampling, screen.get_size()[1]*supersampling)
+    supersize = (screen.get_size()[0]*bidirectional_supersampling, screen.get_size()[1]*bidirectional_supersampling)
     
     visitCountMatrix = construct_data(screen.get_size()[::-1]+(3,), default_value=0)
     
-    drawingStats = {"dotCount": 0, "drawnDotCount":0, "journeyPointCount":0, "keptJourneyPointCount":0, "errorCount":0}
+    drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
-    def visit_points_in_seq(input_seq):
-        for point in input_seq:
-            screenPixel = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
-            drawingStats["dotCount"] += 1
-            try:
-                currentCell = visitCountMatrix[screenPixel[1]][screenPixel[0]]
-                if True:
-                    currentCell[0] += count_scale
-                if point.real > seed.real:
-                    currentCell[1] += count_scale
-                if point.imag > seed.imag:
-                    currentCell[2] += count_scale
-                drawingStats["drawnDotCount"] += 1
-            except IndexError:
-                # drawnDotCount won't be increased.
-                pass
-    """
-    
-    def crashlessPolarIntersection(seg0, seg1):
-        try:
-            return polar_space_segment_intersection(seg0, seg1)
-        except AssertionError:
-            drawingStats["errorCount"] += 1
-            return None
-    """
     pixelWidth = abs(screen_to_complex((0,0), screen.get_size(), camera_pos, view_size, centered_sample=True) - screen_to_complex((1,0), screen.get_size(), camera_pos, view_size, centered_sample=True))
     assert type(pixelWidth) == float
     assert pixelWidth < 0.1, "is the screen really that small?"
     
-    prevConstrainedJourney = [0.0+0.0J] * iter_limit
     for i, x, y, seed in enumerate_flatly(get_seeds(supersize, camera_pos, view_size, centered_sample=False)):
-        if x==0 and y%128 == 0:
-            #print(testVar)
+        if x==0 and y%512 == 0:
             specializedDraw()
-            if y%128 == 0:
-                # print("journey points: {}. kept: {}.".format(journeyPointCount, keptJourneyPointCount))
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}ptskept{}of{}dotsdrawn{}errs_".format(y, supersize[1], drawingStats["keptJourneyPointCount"], drawingStats["journeyPointCount"], drawingStats["drawnDotCount"], drawingStats["dotCount"], drawingStats["errorCount"]))
-        if not (x%bidirectional_subsampling == 0 and y%bidirectional_subsampling == 0):
-            continue
+            if y%512 == 0:
+                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, supersize[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, 4)]
         
-        drawingStats["journeyPointCount"] += len(constrainedJourney)
         if len(constrainedJourney) >= iter_limit:
             continue
-        drawingStats["keptJourneyPointCount"] += len(constrainedJourney)
         
-        #journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=crashlessPolarIntersection)
-        #journeySelfIntersections = gen_intersections(constrainedJourney)
-        #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
+        journeySelfIntersections = gen_intersections(constrainedJourney)
+        doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
         
-        assert constrainedJourney[0] == 0, "differential mode code is not designed for this."
+        visitPointList = [item for item in doubleJourneySelfIntersections]
+        
         if i == 0:
             print("in differential mode, the first point's journey is not drawn.")
             # assert x == 0
@@ -640,8 +626,25 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
             #    assert x == 1
             #    # secondEverSeed = seed
             #    # sampleWidth = abs(secondEverSeed-firstEverSeed)
-            visit_points_in_seq([pointPair[1] for pointPair in zip(prevConstrainedJourney, constrainedJourney) if abs(pointPair[1]-pointPair[0]) < 2*pixelWidth])
-        prevConstrainedJourney = constrainedJourney
+            # assert visitPointList[0] == 0, "differential mode code is not designed for this."
+            limitedVisitPointList = [pointPair[1] for pointPair in zip(prevVisitPointList, visitPointList) if abs(pointPair[1]-pointPair[0]) < 0.5*pixelWidth]
+            
+            for ii, point in enumerate(limitedVisitPointList):
+                screenPixel = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
+                drawingStats["dotCount"] += 1
+                try:
+                    currentCell = visitCountMatrix[screenPixel[1]][screenPixel[0]]
+                    if True:
+                        currentCell[0] += count_scale
+                    if point.real > prevVisitPointList[ii].real:
+                        currentCell[1] += count_scale
+                    if point.imag > prevVisitPointList[ii].imag:
+                        currentCell[2] += count_scale
+                    drawingStats["drawnDotCount"] += 1
+                except IndexError:
+                    # drawnDotCount won't be increased.
+                    pass
+        prevVisitPointList = visitPointList
                 
     specializedDraw()
     screenshot(name_prefix=output_name)
@@ -649,7 +652,7 @@ def test_buddhabrot(camera_pos, view_size, iter_limit, supersampling=1, bidirect
 
 
 #test_abberation([0], 0, 16384)
-test_buddhabrot(0+0j, 4+4j, 64, supersampling=4, bidirectional_subsampling=1, count_scale=4) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
+test_buddhabrot(0+0j, 4+4j, 32, bidirectional_supersampling=4, count_scale=4) #squish_fun=lambda val: squish_unsigned(val**0.5,255)
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
 PygameDashboard.stall_pygame()
