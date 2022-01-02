@@ -13,7 +13,7 @@ MODULUS_OVERLAP_NUDGE = 2**-48
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((128, 128))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -132,6 +132,7 @@ def draw_squished_ints_to_screen(channels, access_order=None):
     except IndexError as ie:
         print("index error when (x, y)=({}, {}): {}.".format(x, y, ie))
         exit(1)
+    pygame.display.flip()
     print("drawing squished ints to screen took {} seconds.".format(time.time()-startTime))
             
             
@@ -190,13 +191,26 @@ def construct_data(size, default_value=None):
 assert_equals(shape_of(construct_data([5,6,7])), [5,6,7])
 
 
+def fill_data(data, fill_value):
+    assert isinstance(data, list)
+    for i in range(len(data)):
+        if isinstance(data[i], list):
+            fill_data(data[i], fill_value)
+        elif isinstance(data[i], tuple):
+            raise TypeError("tuples can't be processed!")
+        else:
+            if not type(data[i]) == type(fill_value):
+                raise NotImplementedError("type can't be changed!")
+            data[i] = fill_value
+
+
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
-    z = 0
+    z = 0.0
     for i in range(iter_limit):
         if abs(z) >= escape_radius:
             return i
-        z = z**2 + c
-    return -1
+        z = z**2.0 + c
+    return None
 
 
 def c_to_mandel_journey(c):
@@ -645,13 +659,13 @@ class SeedSettings:
         self.screen_size = tuple(item for item in screen_size) # make it a tuple as a standard for equality tests in other places.
         self.bidirectional_supersampling = assure_round_binary(bidirectional_supersampling)
         self.camera_pos = camera_pos
+        assert view_size.real > 0.0
+        assert view_size.imag > 0.0
         self.view_size = view_size
-    
-    def get_supersize(self):
-        return scale_size(self.screen_size, self.bidirectional_supersampling)
         
-    def get_pixel_size(self):
-        return calc_pixel_size(self.screen_size, self.view_size)
+        self.supersize = scale_size(self.screen_size, self.bidirectional_supersampling)
+        self.pixel_size = calc_pixel_size(self.screen_size, self.view_size)
+        self.graveyard_point = (1+abs(self.bidirectional_supersampling))*(16.5 + abs(self.camera_pos) + abs(2.0*self.view_size)) # a complex coordinate that will never appear on camera. Make it so large that there is no doubt.
         
     def screen_to_complex(self, screen_coord, centered_sample=None):
         # assert centered_sample is not None
@@ -659,24 +673,32 @@ class SeedSettings:
         
     def sample_coord_to_complex(self, sample_coord, centered_sample=None):
         # assert centered_sample is not None
-        return screen_to_complex(sample_coord, self.get_supersize(), self.camera_pos, self.view_size, centered_sample=centered_sample)
+        return screen_to_complex(sample_coord, self.supersize, self.camera_pos, self.view_size, centered_sample=centered_sample)
         
     def complex_to_screen(self, complex_coord, centered_sample=None):
         # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
         return complex_to_screen(complex_coord, self.screen_size, self.camera_pos, self.view_size, centered_sample=centered_sample)
+        
+    def complex_is_on_screen(self, complex_coord, centered_sample=None):
+        assert centered_sample is not None
+        if centered_sample != True:
+            raise NotImplementedError("off-center samples?")
+        viewQuadrantSize = self.view_size / 2.0
+        realAligned = (complex_coord.real > self.camera_pos.real - viewQuadrantSize.real) and (complex_coord.real < self.camera_pos.real + viewQuadrantSize.real)
+        imagAligned = (complex_coord.imag > self.camera_pos.imag - viewQuadrantSize.imag) and (complex_coord.imag < self.camera_pos.imag + viewQuadrantSize.imag)
+        return realAligned and imagAligned
         
     def complex_to_sample_coord(self, complex_coord, centered_sample=None):
         assert False, "this method probably should never be used!"
         # return complex_to_screen(complex_coord, self.get_supersize(), self.camera_pos, self.view_size, centered_sample=centered_sample)
         
     def iter_sample_coords(self):
-        return range2d(self.get_supersize()[0], self.get_supersize()[1])
+        return range2d(self.supersize[0], self.supersize[1])
         
     def iter_sample_descriptions(self, centered_sample=None):
         assert centered_sample is not None
         for x, y in self.iter_sample_coords():
             yield (x, y, self.sample_coord_to_complex((x,y), centered_sample=centered_sample))
-        
         
 
 def do_buddhabrot(seed_settings, iter_limit, count_scale=1, escape_radius=4.0):
@@ -691,19 +713,19 @@ def do_buddhabrot(seed_settings, iter_limit, count_scale=1, escape_radius=4.0):
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
     pixelWidth = abs(seed_settings.screen_to_complex((0,0), centered_sample=False) - seed_settings.screen_to_complex((1,0), centered_sample=False))
-    assert pixelWidth == seed_settings.get_pixel_size().real
+    assert pixelWidth == seed_settings.pixel_size.real
     assert type(pixelWidth) == float
     assert pixelWidth < 0.1, "is the screen really that small?"
     
     for i, x, y, seed in enumerate_flatly(seed_settings.iter_sample_descriptions(centered_sample=False)):
     
-        testSeed = screen_to_complex((x,y), seed_settings.get_supersize(), seed_settings.camera_pos, seed_settings.view_size, centered_sample=False) # DO NOT MODIFY YET.
+        testSeed = screen_to_complex((x,y), seed_settings.supersize, seed_settings.camera_pos, seed_settings.view_size, centered_sample=False) # DO NOT MODIFY YET.
         assert seed == testSeed
         
         if x==0 and y%512 == 0:
             specializedDraw()
             if y%512 == 0:
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, seed_settings.get_supersize()[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
+                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, seed_settings.supersize[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, escape_radius)]
@@ -757,63 +779,110 @@ def quadrilateral_is_convex(points):
 
 
 
-def do_panel_buddhabrot(seed_settings, iter_limit, output_interval_iters=1, count_scale=1, escape_radius=4.0):
-    output_name="jointbuddhabrot_RallGconvexneighBconcaveneigh_{}pos{}fov{}itr{}biSuper{}count_".format(seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale)
+def do_panel_buddhabrot(seed_settings, iter_limit, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=4.0, buddhabrot_set_type="bb"):
+    assert buddhabrot_set_type in {"bb", "jbb", "abb"}
+    
+    output_name="normal_{}_R01escapedneighG23escapedneighB4escapedneigh_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
+    
+    # assert seed_settings.get_supersize() == seed_settings.screen_size, "supersampling is currently not allowed in panel buddhabrot methods."
+    
+    visitCountMatrix = construct_data(seed_settings.screen_size[::-1]+(3,), default_value=0)
+    assert tuple(shape_of(visitCountMatrix)) == screen.get_size()[::-1]+(3,) # this isn't affected by supersampling! that comes later!
+    
+    #def specializedEscaped(test_point):
+    #    return abs(test_point) > escape_radius
     
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
     
-    assert seed_settings.get_supersize() == seed_settings.screen_size, "supersampling is currently not allowed in panel buddhabrot methods."
-    
-    visitCountMatrix = construct_data(seed_settings.screen_size[::-1]+(3,), default_value=0)
-    assert tuple(shape_of(visitCountMatrix)) == screen.get_size()[::-1]+(3,)
-    
-    panel = construct_data(seed_settings.screen_size[::-1], default_value=None)
-    assert tuple(shape_of(panel)) == screen.get_size()[::-1]
+    assert seed_settings.supersize[0] <= 4096, "make sure there is enough memory for this!"
+    panel = construct_data(seed_settings.supersize[::-1], default_value=None)
+    # assert tuple(shape_of(panel)) == screen.get_size()[::-1] # not true anymore.
+    assert abs(seed_settings.graveyard_point) > escape_radius
     for x, y, seed in seed_settings.iter_sample_descriptions(centered_sample=False):
-        panel[y][x] = [seed, 0.0+0.0J]
-        assert seed_settings.complex_to_screen(seed, centered_sample=False) == (x, y)
-    assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,)
-        
+        panelCell = [seed, 0.0+0.0J]
+        if buddhabrot_set_type in {"bb", "abb"}:
+            itercount = c_to_mandel_itercount_fast(seed, iter_limit, escape_radius)
+            escapesBeforeIterLimit = itercount is not None
+            if buddhabrot_set_type == "bb":
+                if not escapesBeforeIterLimit:
+                    panelCell = [seed_settings.graveyard_point] * 2
+            else:
+                assert buddhabrot_set_type == "abb"
+                if escapesBeforeIterLimit:
+                    panelCell = [seed_settings.graveyard_point] * 2
+        else:
+            assert buddhabrot_set_type == "jbb"
+        panel[y][x] = panelCell
+        # assert seed_settings.complex_to_screen(seed, centered_sample=False) == (x, y) # not to screen... not if supersampling is allowed.
+    # assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,) # not true anymore.
+    print("done initializing panel data.")
     for iter_index in range(0, iter_limit):
     
         if (iter_index % output_interval_iters) == 0:
             specializedDraw()
-            screenshot(name_prefix=output_name+"_{}of{}itrs_".format(iter_index, iter_limit))
+            screenshot(name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
+            if blank_on_output:
+                fill_data(visitCountMatrix, 0)
+            assert blank_on_output
+            # assert_equals(str(visitCountMatrix).replace("0","").replace("[","").replace("]","").replace(",","").replace(" ",""), "")
     
         for y, panelRow in enumerate(panel):
             for x, panelCell in enumerate(panelRow):
                 if abs(panelCell[1]) > escape_radius:
-                    continue
-                panelCell[1] = panelCell[1]**2 + panelCell[0]
+                    # using continue here without overwriting the value causes visual bugs. I don't know the reason yet.
+                    panelCell[1] = seed_settings.graveyard_point
+                    assert abs(panelCell[1]) > escape_radius
+                else:
+                    panelCell[1] = panelCell[1]**2 + panelCell[0]
                 
         for y in range(1, len(panel)-1):
             panelRow = panel[y]
             for x in range(1, len(panelRow)-1):
-                panelCell = panelRow[x]
-                screenPixel = seed_settings.complex_to_screen(panelCell[1], centered_sample=False)
-                thisPtIsConvex = quadrilateral_is_convex([panel[y-1][x][1], panel[y][x+1][1], panel[y+1][x][1], panel[y][x-1][1]])
+                panelCellZ = panelRow[x][1]
+                screenPixel = seed_settings.complex_to_screen(panelCellZ, centered_sample=False)
                 try:
                     visitCountMatrixCell = visitCountMatrix[screenPixel[1]][screenPixel[0]]
-
-                    if True:
-                        visitCountMatrixCell[0] += count_scale
-                    if thisPtIsConvex:
-                        visitCountMatrixCell[1] += count_scale
-                    else:
-                        visitCountMatrixCell[2] += count_scale
                 except IndexError:
                     # the point is not on the screen.
-                    pass
+                    continue
+                # assert abs(panelCellZ) < escape_radius, (x, y, panelCellZ, abs(panelCellZ), escape_radius) # can't always be true because the point could have just escaped.
+
+                pointNeighborhood = [panel[y-1][x][1], panel[y][x+1][1], panel[y+1][x][1], panel[y][x-1][1]]
+                neighborhoodEscapeCount = sum((abs(testPoint) > escape_radius) for testPoint in pointNeighborhood)
+                #neighborhoodIsConvex = quadrilateral_is_convex(pointNeighborhood)
+                #neighborHasEscaped = max(abs(point) for point in pointNeighborhood) > escape_radius # THIS IS ALSO TRUE WHEN the point is in a graveyard (not part of desired set).
+                #westNeighborZ = panelRow[x-1][1]
+                #eastNeighborZ = panelRow[x+1][1]
+                #southNeighborZ = panel[y-1][x][1]
+                #northNeighborZ = panel[y+1][x][1]
+                #horizNoEscapedNeighbor = (abs(westNeighborZ) < escape_radius and abs(eastNeighborZ) < escape_radius)
+                #vertNoEscapedNeighbor = (abs(southNeighborZ) < escape_radius and abs(northNeighborZ) < escape_radius)
+                if neighborhoodEscapeCount < 2:
+                    visitCountMatrixCell[0] += count_scale
+                #if neighborHasEscaped:
+                #if horizNoEscapedNeighbor and abs(panelCellZ-westNeighborZ) > abs(panelCellZ-eastNeighborZ):
+                if neighborhoodEscapeCount == 2 or neighborhoodEscapeCount == 3:
+                    visitCountMatrixCell[1] += count_scale
+                #if not neighborhoodIsConvex:
+                #if vertNoEscapedNeighbor and abs(panelCellZ-southNeighborZ) > abs(panelCellZ-northNeighborZ):
+                if neighborhoodEscapeCount == 4:
+                    visitCountMatrixCell[2] += count_scale
                 
     specializedDraw()
     screenshot(name_prefix=output_name)
+    
+    if blank_on_output:
+        fill_data(visitCountMatrix, 0)
                 
                 
+                
+                
+print("done testing.")
 
 #test_abberation([0], 0, 16384)
 # do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), 32, count_scale=4)
-do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), 256, output_interval_iters=16, count_scale=1)
+do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), 16384, output_interval_iters=256, count_scale=16) # <------
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
