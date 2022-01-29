@@ -4,6 +4,7 @@
 import time
 import sys
 
+import Qwerty
 
 import pygame
 
@@ -12,12 +13,7 @@ QUIT_EVENT_TYPES = {pygame.K_ESCAPE, pygame.KSCAN_ESCAPE, pygame.QUIT}
 
 parent_module_exec = None
 
-KEYBOARD_DIGITS = "0123456789"
-KEYBOARD_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-KEYBOARD_SYMBOLS = " `~!@#$%^&*()-_=+[{]}\\|\\;:'\",<.>/?"
-KEYBOARD_CHARS = KEYBOARD_DIGITS + KEYBOARD_LETTERS + KEYBOARD_SYMBOLS
-KEYBOARD_LOWER_CHOOSABLES = "`1234567890-=[]\;',./"
-KEYBOARD_UPPER_CHOOSABLES = "~!@#$%^&*()_+{}|:\"<>?"
+
 
 
 def raise_inline(error_type, message):
@@ -36,19 +32,6 @@ def whichever_exec(command_string, preferred_exec=None):
     execToUse(command_string)
 
 
-def apply_capitalization_to_char(new_char, caps_lock_is_on, shift_is_on):
-    assert new_char in KEYBOARD_CHARS
-    if new_char in KEYBOARD_LOWER_CHOOSABLES:
-        if shift_is_on:
-            new_char = KEYBOARD_UPPER_CHOOSABLES[KEYBOARD_LOWER_CHOOSABLES.index(new_char)]
-    elif new_char in KEYBOARD_LETTERS:
-        assert new_char.lower() == new_char, "assumption about keyboard abilities."
-        if shift_is_on != caps_lock_is_on:
-            new_char = new_char.upper()
-    else:
-        print("The character {} has unknown capitalization rules.".format(new_char))
-    return new_char
-    
     
    
    
@@ -62,7 +45,7 @@ def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
         
     try:
         newBaseChar = chr(event.key)
-        newChar = apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
+        newChar = Qwerty.apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
         result = string + newChar
         return result
     except Exception as e:
@@ -266,10 +249,14 @@ def clear_events_of_types(event_type_seq):
         pygame.event.clear(eventtype=eventType)
         
 
+
+
+
+
 def stall_pygame(preferred_exec=None, clear_quit_events=True):
     print("stall.")
     
-    keyTrack = KeyStateTracker([pygame.K_LSHIFT, pygame.K_CAPSLOCK], key_modes={pygame.K_LSHIFT:"is_down", pygame.K_CAPSLOCK:"odd_downs"})
+    keyTrack = KeyStateTracker([pygame.K_CAPSLOCK, pygame.K_LSHIFT, pygame.K_RSHIFT], key_modes={pygame.K_LSHIFT:"is_down", pygame.K_RSHIFT:"is_down", pygame.K_CAPSLOCK:"odd_downs"})
     
     monitoredComStr = MonitoredValue("", pygame.display.set_caption)
     screenRateLimiter = RateLimiter(0.1)
