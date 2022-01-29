@@ -7,6 +7,8 @@ import sys
 
 import pygame
 
+QUIT_EVENT_TYPES = {pygame.K_ESCAPE, pygame.KSCAN_ESCAPE, pygame.QUIT}
+
 
 parent_module_exec = None
 
@@ -23,12 +25,15 @@ def raise_inline(error_type, message):
 
 
 
-def whichever_exec(command_string):
-    if parent_module_exec is None:
-        print("parent_module_exec was not provided. falling back to exec.")
-        exec(command_string)
+def whichever_exec(command_string, preferred_exec=None):
+    if preferred_exec is not None:
+        execToUse = preferred_exec
+    if parent_module_exec is not None:
+        execToUse = parent_module_exec
     else:
-        parent_module_exec(command_string)
+        print("preferred or parent_module_exec was not provided. falling back to exec.")
+        execToUse = exec
+    execToUse(command_string)
 
 
 def apply_capitalization_to_char(new_char, caps_lock_is_on, shift_is_on):
@@ -45,27 +50,28 @@ def apply_capitalization_to_char(new_char, caps_lock_is_on, shift_is_on):
     return new_char
     
     
-def string_plus_char(string=None, new_char=None):
-    if new_char == char(pygame.K_BACKSPACE):
-        return string[:-1]
-    else:
-        return string + new_char
    
    
 def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
+    if event.key == pygame.K_BACKSPACE:
+        return string[:-1]
+        
+    if not (0 <= event.key < 256):
+        print("PygameDashboard.string_plus_pygame_key_event: ignoring extreme value {}.".format(event.key))
+        return string
+        
     try:
         newBaseChar = chr(event.key)
         newChar = apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
-        result = string_plus_char(string=string, new_char=newChar)
+        result = string + newChar
         return result
     except Exception as e:
-        print("problem with char with code {}: {}.".format(event.key, e))
+        print("PygameDashboard.string_plus_pygame_key_event: unexpected {} with char with code {}: {}.".format(type(e), event.key, e))
         return string
 
 
-def is_quit_event(event):
-    return event.type in [pygame.K_ESCAPE, pygame.KSCAN_ESCAPE, pygame.QUIT]
-   
+
+
 
 def noneis(value, default):
     return default if value is None else value
@@ -166,65 +172,111 @@ class MonitoredValue:
         return self.synced_value
         
         
+        
+
 class RateLimiter:
-    def __init__(self, interval, min_rejections=None, max_rejections=None):
-        self.interval = interval
+    def __init__(self, interval, min_rejections=None, max_rejections=None, cooldown_scale=0.0, require_finish_action=False):
+        
+        self.cooldown_scale = cooldown_scale
+        self.last_action_duration = None
+        self.require_finish_action = require_finish_action
+        
         self.min_rejections, self.max_rejections = min_rejections, max_rejections
+        self.rejection_counter = None
+        
+        self.interval = interval
         self.time_fun = time.monotonic
+        self.last_approval_time = 0.0
         
-        self.last_approval_time, self.rejection_counter = (0.0, None)
-        self.approve(self.time_fun())
+        self._approve(self.time_fun())
         
-    def approve(self, approval_time):
+    
+    def get_effective_interval(self):
+        return self.interval + (noneis(self.last_action_duration, 0.0) * self.cooldown_scale)
+        
+        
+    def get_time_status(self):
+        currentTime = self.time_fun()
+        currentDuration = currentTime - self.last_approval_time
+        remainingDuration = self.get_effective_interval() - currentDuration
+        assert currentDuration > 0.0
+        assert currentTime >= 0.0
+        return (currentTime, currentDuration, remainingDuration)
+        
+        
+    def _approve(self, approval_time):
         assert approval_time > self.last_approval_time
         self.last_approval_time = approval_time
         self.rejection_counter = 0
+        self.last_action_duration = None
         
-    def judge_by_rejection_count(self, current_time):
+        
+    def finish_action(self):
+        assert self.last_action_duration is None, "self.last_action_duration not cleared. were methods called in bad order?"
+        self.last_action_duration = self.time_fun() - self.last_approval_time
+        
+        
+    def judge_by_max_rejection_count(self, current_time):
         if self.max_rejections is not None:
             if self.rejection_counter > self.max_rejections:
-                self.approve(current_time)
+                self._approve(current_time)
                 return True
             self.rejection_counter += 1
         return False
         
+        
     def get_judgement(self):
+        if self.require_finish_action:
+            assert self.last_action_duration is not None, "finish_action was not called, but require_finish_action is True."
+    
         if self.min_rejections is not None:
             if self.rejection_counter < self.min_rejections:
                 self.rejection_counter += 1
                 return False
-        currentTime = self.time_fun()
-        actualInterval = currentTime - self.last_approval_time
-        assert actualInterval > 0.0
-        if actualInterval >= self.interval:
-            self.approve(currentTime)
+        currentTime, _, timeRemaining = self.get_time_status()
+        # assert timeElapsed > 0.0
+        if timeRemaining <= 0.0:
+            self._approve(currentTime)
             return True
         else:
-            result = self.judge_by_rejection_count(currentTime)
-            return result
+            return self.judge_by_max_rejection_count(currentTime)
+            
             
     def await_approval(self):
-        currentTime = self.time_fun()
-        currentDuration = currentTime - self.last_approval_time
-        assert currentDuration > 0.0
-        remainingDuration = self.interval - currentDuration
-        if remainingDuration <= 0.0:
-            self.approve(currentTime)
-            return True
-        else:
-            time.sleep(remainingDuration)
-            self.approve(self.time_fun())
-            return True
+        currentTime, timeElapsed, timeRemaining = self.get_time_status()
+        assert timeElapsed > 0.0
+        
+        if timeRemaining > 0.0:
+            time.sleep(timeRemaining)
+
+        self._approve(self.time_fun())
+        return True
         
 
-def stall_pygame():
+
+
+        
+        
+
+def is_quit_event(event):
+    return event.type in QUIT_EVENT_TYPES
+    
+def clear_events_of_types(event_type_seq):
+    for eventType in event_type_seq:
+        pygame.event.clear(eventtype=eventType)
+        
+
+def stall_pygame(preferred_exec=None, clear_quit_events=True):
     print("stall.")
     
     keyTrack = KeyStateTracker([pygame.K_LSHIFT, pygame.K_CAPSLOCK], key_modes={pygame.K_LSHIFT:"is_down", pygame.K_CAPSLOCK:"odd_downs"})
     
     monitoredComStr = MonitoredValue("", pygame.display.set_caption)
     screenRateLimiter = RateLimiter(0.1)
-    eventRateLimiter = RateLimiter(0.01)
+    eventRateLimiter = RateLimiter(1/120.0)
+    
+    if clear_quit_events:
+        clear_events_of_types(QUIT_EVENT_TYPES)
     
     while True:
         
@@ -246,11 +298,13 @@ def stall_pygame():
                 
             if is_keydown_of(event, pygame.K_RETURN):
                 print(__name__+">> "+monitoredComStr.get())
-                whichever_exec(monitoredComStr.get())
+                whichever_exec(monitoredComStr.get(), preferred_exec=preferred_exec)
                 monitoredComStr.set_sync("")
                 continue
             
             if event.type == pygame.KEYDOWN:
-                monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, *keyTrack.get_translated_states(pygame.K_CAPSLOCK, pygame.K_LSHIFT)))
+                capslockState, lshiftState, rshiftState = keyTrack.get_translated_states([pygame.K_CAPSLOCK, pygame.K_LSHIFT, pygame.K_RSHIFT])
+                shiftState = lshiftState or rshiftState
+                monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, capslockState, shiftState))
                 continue
     assert False
