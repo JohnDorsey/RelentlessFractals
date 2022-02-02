@@ -4,18 +4,21 @@ import time
 import math
 import itertools
 import collections
+import copy
 
 import pygame
 
 from ColorTools import atan_squish_unsigned, automatic_color, squish_color
 
+
 ZERO_DIVISION_NUDGE = 2**-64
 MODULUS_OVERLAP_NUDGE = 2**-48
 LINESEG_INTERSECTION_ERROR_TOLERANCE = 1.0/1000.0
 
+
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((256, 256))
+screen = pygame.display.set_mode((1024, 1024))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -108,6 +111,8 @@ def enforce_tuple_length(input_tuple, length, default=None):
         return input_tuple[:length]
     
 
+
+
 def draw_squished_ints_to_screen(channels, access_order=None):
     # maybe this method shouldn't exist. Maybe image creation should happen in another process, like photo.py in GeodeFractals.
     startTime = time.time()
@@ -139,7 +144,8 @@ def draw_squished_ints_to_screen(channels, access_order=None):
     pygame.display.flip()
     print("drawing squished ints to screen took {} seconds.".format(time.time()-startTime))
             
-            
+
+
 def range2d(width, height):
     for y in range(height):
         for x in range(width):
@@ -188,7 +194,7 @@ def enumerate_flatly(input_seq, start=0):
 def construct_data(size, default_value=None):
     assert len(size) > 0
     if len(size) == 1:
-        return [default_value for i in range(size[0])]
+        return [copy.deepcopy(default_value) for i in range(size[0])]
     else:
         return [construct_data(size[1:], default_value=default_value) for i in range(size[0])]
 
@@ -406,7 +412,7 @@ def segment_intersection(seg0, seg1, extra_assertions=True):
         return None
     if t < 0 or t > 1 or u < 0 or u > 1:
         return None
-    if not (min([t - 0, t - 1, u - 0, u - 1]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect.
+    if not (min([t - 0, t - 1, u - 0, u - 1]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
         if extra_assertions:
             if not segments_intersect(seg0, seg1, extra_assertions=False):
                 print("assertion in segment_intersection would fail for segments_intersect({}, {})".format(seg0, seg1))
@@ -734,13 +740,19 @@ class SeedSettings:
         # assert centered_sample is not None
         return screen_to_complex(sample_coord, self.supersize, self.camera_pos, self.view_size, centered_sample=centered_sample)
         
-    def complex_to_screen_item(self, data, complex_coord, centered_sample=None):
-        x, y = self.complex_to_screen(complex_coord, centered_sample=centered_sample)
+    def complex_to_anygrid_item(self, data, complex_coord, grid_size=None, centered_sample=None):
+        x, y = self.complex_to_anygrid(complex_coord, grid_size=grid_size, centered_sample=centered_sample)
         return data[y][x]
         
-    def complex_to_screen(self, complex_coord, centered_sample=None):
+    def complex_to_screen_item(self, data, complex_coord, centered_sample=None):
+        return self.complex_to_anygrid_item(data, complex_coord, grid_size=self.screen_size, centered_sample=centered_sample)
+        
+    def complex_to_anygrid(self, complex_coord, grid_size=None, centered_sample=None):
         # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
-        return complex_to_screen(complex_coord, self.screen_size, self.camera_pos, self.view_size, centered_sample=centered_sample)
+        return complex_to_screen(complex_coord, grid_size, self.camera_pos, self.view_size, centered_sample=centered_sample)
+        
+    def complex_to_screen(self, complex_coord, centered_sample=None):
+        return self.complex_to_anygrid(complex_coord, self.screen_size, centered_sample=centered_sample)
         
     def complex_is_on_screen(self, complex_coord, centered_sample=None):
         assert centered_sample is not None
@@ -837,13 +849,10 @@ def do_buddhabrot(seed_settings, iter_limit=None, count_scale=1, escape_radius=4
     visitPointListEcho = Echo(length=2)
     
     for i, x, y, seed in enumerate_flatly(seed_settings.iter_sample_descriptions(centered_sample=False)):
-    
-        testSeed = screen_to_complex((x,y), seed_settings.supersize, seed_settings.camera_pos, seed_settings.view_size, centered_sample=False) # DO NOT MODIFY YET.
-        assert seed == testSeed
         
         if x==0 and y%512 == 0:
             specializedDraw()
-            if y%512 == 0:
+            if y%512 == 0 or y == seed_settings.screen_size[1]//2:
                 screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, seed_settings.supersize[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
@@ -924,6 +933,28 @@ def check_bb_containedness(argless_itercount_fun=None, iter_limit=None, buddhabr
 
 
 
+def gen_ordered_index_pairs(start, stop):
+    for Ai in range(start, stop-1):
+        for Bi in range(Ai+1, stop):
+            yield (Ai, Bi)
+            
+def gen_ordered_item_pairs(input_list):
+    for Ai, Bi in gen_ordered_index_pairs(0, len(input_list)):
+        yield (input_list[Ai], input_list[Bi])
+
+def mean(input_seq):
+    sumSoFar = 0
+    i = -1
+    for i, item in enumerate(input_seq):
+        sumSoFar += item
+    itemCount = i + 1
+    if itemCount == 0:
+        return 0
+    assert itemCount > 0
+    return sumSoFar / float(itemCount)
+
+
+i_SEED, i_CURRENT_Z, i_PREVIOUS_Z, i_ISINSET = (0, 1, 2, 3)
 
 
 
@@ -931,7 +962,9 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     
-    output_name="normal_{}_R012outofsetneighG3outofsetneighB4outofsetneigh_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
+    # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
+    outputColorSummary = "Rcgave1of2guestspairmidptGpairmidptsBgroupmidpt"
+    output_name="normal_{}_{}_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
     
     visitCountMatrix = construct_data(seed_settings.screen_size[::-1]+(3,), default_value=0)
     assert tuple(shape_of(visitCountMatrix)) == screen.get_size()[::-1]+(3,) # this isn't affected by supersampling! that comes later!
@@ -942,12 +975,11 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         assert name_prefix is not None
         specializedDraw()
         screenshot(name_prefix=name_prefix)
-    
+    constructSupersized = lambda defVal: construct_data(seed_settings.supersize[::-1], default_value=defVal)
     
     
     assert seed_settings.supersize[0] <= 4096, "make sure there is enough memory for this!"
-    panel = construct_data(seed_settings.supersize[::-1], default_value=None)
-    i_SEED, i_CURRENT_Z, i_PREVIOUS_Z, i_ISINSET = (0, 1, 2, 3)
+    panel = constructSupersized(None)
     
     assert abs(seed_settings.graveyard_point) > escape_radius
     for x, y, seed in seed_settings.iter_sample_descriptions(centered_sample=False):
@@ -960,6 +992,9 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
     # assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,) # not true anymore.
     print("done initializing panel data.")
     
+    
+    hotelGrid = construct_data(seed_settings.supersize[::-1], default_value=[])
+    assert hotelGrid[0][0] is not hotelGrid[0][1]
     
     
     for iter_index in range(0, iter_limit):
@@ -979,39 +1014,40 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
             else:
                 panelCell[i_CURRENT_Z] = panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED]
                 
-        for y, panelRow in itertools.islice(enumerate(panel), 1, len(panel)-1):
-            for x, panelCell in itertools.islice(enumerate(panelRow), 1, len(panelRow)-1):
-                if not panelCell[i_ISINSET]: # if this point isn't in the desired set:
-                    continue
-                    
+        # panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=seed_settings, panel=panel, visit_count_matrix=visitCountMatrix, count_scale=count_scale, centered_sample=False)
+        
+        for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+            try:
+                hotel = seed_settings.complex_to_anygrid_item(hotelGrid, panelCell[i_CURRENT_Z], grid_size=seed_settings.supersize, centered_sample=False)
+            except IndexError:
+                continue # out of bounds
+            hotel.append(panelCell[i_SEED])
+        for hotelY, hotelX, hotel in enumerate_to_depth(hotelGrid, depth=2):
+            if len(hotel) < 2:
+                continue
+                
+            for guestA, guestB in gen_ordered_item_pairs(hotel):
+                guestPairMidpoint = (guestA + guestB) / 2.0
                 try:
-                    visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, panelCell[i_CURRENT_Z], centered_sample=False)
+                    visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, guestPairMidpoint, centered_sample=False)
                 except IndexError:
                     continue # the point is not on the screen.
-                    
-                # assert abs(panelCellZ) < escape_radius, (x, y, panelCellZ, abs(panelCellZ), escape_radius) # can't always be true because the point could have just escaped.
-
-                cellNeighborhood = [panel[y-1][x], panel[y][x+1], panel[y+1][x], panel[y][x-1]]
-                #neighborhoodEscapeCount = sum((abs(testCell[1]) > escape_radius) for testCell in cellNeighborhood)
-                neighborhoodOutOfSetCount = sum((not testCell[i_ISINSET]) for testCell in cellNeighborhood)
-                #neighborhoodIsConvex = quadrilateral_is_convex(pointNeighborhood)
-                #neighborHasEscaped = max(abs(point) for point in pointNeighborhood) > escape_radius # THIS IS ALSO TRUE WHEN the point is in a graveyard (not part of desired set).
-                #westNeighborZ = panelRow[x-1][1]
-                #eastNeighborZ = panelRow[x+1][1]
-                #southNeighborZ = panel[y-1][x][1]
-                #northNeighborZ = panel[y+1][x][1]
-                #horizNoEscapedNeighbor = (abs(westNeighborZ) < escape_radius and abs(eastNeighborZ) < escape_radius)
-                #vertNoEscapedNeighbor = (abs(southNeighborZ) < escape_radius and abs(northNeighborZ) < escape_radius)
-                if neighborhoodOutOfSetCount < 3:
+                if len(hotel) == 2:
                     visitCountMatrixCell[0] += count_scale
-                #if neighborHasEscaped:
-                #if horizNoEscapedNeighbor and abs(panelCellZ-westNeighborZ) > abs(panelCellZ-eastNeighborZ):
-                if neighborhoodOutOfSetCount == 3:
+                else:
+                    assert len(hotel) > 2
                     visitCountMatrixCell[1] += count_scale
-                #if not neighborhoodIsConvex:
-                #if vertNoEscapedNeighbor and abs(panelCellZ-southNeighborZ) > abs(panelCellZ-northNeighborZ):
-                if neighborhoodOutOfSetCount == 4:
-                    visitCountMatrixCell[2] += count_scale
+                    
+            if len(hotel) > 2:
+                guestGroupMidpoint = mean(hotel)
+                try:
+                    visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, guestGroupMidpoint, centered_sample=False)
+                except IndexError:
+                    continue # the point is not on the screen.
+                visitCountMatrixCell[2] += count_scale
+        for hotelY, hotelX, hotel in enumerate_to_depth(hotelGrid, depth=2):
+            hotel.clear()
+            
                 
     specializedDrawAndScreenshot(name_prefix=output_name)
     
@@ -1019,6 +1055,48 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         fill_data(visitCountMatrix, 0)
                 
                 
+                
+                
+def panel_brot_draw_close_encounters():
+    pass
+
+
+def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=None, visit_count_matrix=None, count_scale=None, centered_sample=None):
+    for y, panelRow in itertools.islice(enumerate(panel), 1, len(panel)-1):
+        for x, panelCell in itertools.islice(enumerate(panelRow), 1, len(panelRow)-1):
+            if not panelCell[i_ISINSET]: # if this point isn't in the desired set:
+                continue
+
+            try:
+                visitCountMatrixCell = seed_settings.complex_to_screen_item(visit_count_matrix, panelCell[i_CURRENT_Z], centered_sample=centered_sample)
+            except IndexError:
+                continue # the point is not on the screen.
+
+            # assert abs(panelCellZ) < escape_radius, (x, y, panelCellZ, abs(panelCellZ), escape_radius) # can't always be true because the point could have just escaped.
+
+            cellNeighborhood = [panel[y-1][x], panel[y][x+1], panel[y+1][x], panel[y][x-1]]
+            #neighborhoodEscapeCount = sum((abs(testCell[1]) > escape_radius) for testCell in cellNeighborhood)
+            neighborhoodOutOfSetCount = sum((not testCell[i_ISINSET]) for testCell in cellNeighborhood)
+            #neighborhoodIsConvex = quadrilateral_is_convex(pointNeighborhood)
+            #neighborHasEscaped = max(abs(point) for point in pointNeighborhood) > escape_radius # THIS IS ALSO TRUE WHEN the point is in a graveyard (not part of desired set).
+            #westNeighborZ = panelRow[x-1][1]
+            #eastNeighborZ = panelRow[x+1][1]
+            #southNeighborZ = panel[y-1][x][1]
+            #northNeighborZ = panel[y+1][x][1]
+            #horizNoEscapedNeighbor = (abs(westNeighborZ) < escape_radius and abs(eastNeighborZ) < escape_radius)
+            #vertNoEscapedNeighbor = (abs(southNeighborZ) < escape_radius and abs(northNeighborZ) < escape_radius)
+            if neighborhoodOutOfSetCount < 3:
+                visitCountMatrixCell[0] += count_scale
+            #if neighborHasEscaped:
+            #if horizNoEscapedNeighbor and abs(panelCellZ-westNeighborZ) > abs(panelCellZ-eastNeighborZ):
+            if neighborhoodOutOfSetCount == 3:
+                visitCountMatrixCell[1] += count_scale
+            #if not neighborhoodIsConvex:
+            #if vertNoEscapedNeighbor and abs(panelCellZ-southNeighborZ) > abs(panelCellZ-northNeighborZ):
+            if neighborhoodOutOfSetCount == 4:
+                visitCountMatrixCell[2] += count_scale
+
+
 
 
 
@@ -1028,7 +1106,7 @@ print("done testing.")
 
 #test_abberation([0], 0, 16384)
 # do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=32, count_scale=4)
-do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=16384, output_interval_iters=64, count_scale=16) # <------
+do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=16384, output_interval_iters=8, count_scale=8) # <------
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
