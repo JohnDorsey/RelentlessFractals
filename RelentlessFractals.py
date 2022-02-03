@@ -15,7 +15,7 @@ import SegmentGeometry
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((2048, 2048))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -358,27 +358,35 @@ def count_float_local_minima(input_seq): # does not recognize any minimum with m
     return result
                 
                 
-
+"""
 def get_seeds(screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
     assert centered_sample is not None
     for y in range(screen_size[1]):
         for x in range(screen_size[0]):
             yield (x, y, screen_to_complex((x,y), screen_size, camera_pos, view_size, centered_sample=centered_sample))
+"""
             
-def calc_pixel_size(screen_size, view_size):
-    return (view_size.real/screen_size[0]) + (view_size.imag/screen_size[1])*1.0j
-            
+def parallel_div_complex_by_floats(view_size, screen_size):
+    return complex(view_size.real/screen_size[0], view_size.imag/screen_size[1])
+    
+def parallel_mul_complex_by_floats(complex_val, int_pair):
+    return complex(complex_val.real * int_pair[0], complex_val.imag * int_pair[1])
+    
+def parallel_div_complex_by_complex(val0, val1):
+    return complex(val0.real/val1.real, val0.imag/val1.imag)
+    
+"""
 def calc_camera_properties(screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
     assert centered_sample is not None, "this arg might not even be needed."
     assert centered_sample == False, "not implemented yet."
     camera_corner_pos = camera_pos - (view_size/2.0)
-    pixel_size = calc_pixel_size(screen_size, view_size)
+    pixel_size = parallel_div_complex_by_ints(view_size, screen_size)
     return (camera_corner_pos, pixel_size)
     
 def screen_to_complex(screen_coords: tuple, screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
     assert centered_sample is not None
     camera_corner_pos, pixel_size = calc_camera_properties(screen_size, camera_pos, view_size, centered_sample=centered_sample)
-    return camera_corner_pos + screen_coords[0]*pixel_size.real + screen_coords[1]*pixel_size.imag*1.0j + pixel_size*0.5*centered_sample
+    return camera_corner_pos + parallel_mul_complex_by_ints(pixel_size, screen_coords) + pixel_size*0.5*centered_sample
     
 def complex_to_screen(complex_coord, screen_size, camera_pos, view_size, centered_sample=None):
     assert centered_sample is not None
@@ -390,7 +398,7 @@ def complex_to_screen(complex_coord, screen_size, camera_pos, view_size, centere
     return (int(x), int(y))
     
 assert complex_to_screen(screen_to_complex((56,78), (123,456), 8+8j, 4+4j, centered_sample=False), (123,456), 8+8j, 4+4j, centered_sample=False) == (56, 78)
-
+"""
 
 
     
@@ -459,72 +467,67 @@ def modify_visit_count_matrix(visit_count_matrix, input_seq, camera_pos, view_si
             pass
 """
 
-def scale_size(input_size, input_scale):
+def scaled_size(input_size, input_scale):
     assert len(input_size) == 2
     assert isinstance(input_scale, int)
     return (input_size[0]*input_scale, input_size[1]*input_scale)
     
     
-class SeedSettings:
-    # the slowdown from the use of this class is only about 7%. I think it is worth it.
-    # the first seq to use this class was at time 1641086680.
+class View:
+    def __init__(self, center_pos, size):
+        assert isinstance(center_pos, complex)
+        assert isinstance(size, complex)
+        self.center_pos, self.size = (center_pos, size)
+        self.corner_pos = self.center_pos - (self.size / 2.0)
+        
+    def get_sub_view_size(self, subdivisions_pair):
+        return parallel_div_complex_by_floats(self.size, subdivisions_pair)
     
-    def __init__(self, camera_pos, view_size, screen_size, bidirectional_supersampling=1):
-        assert screen_size == screen.get_size()
-        assert all(is_round_binary(item) for item in screen_size)
-        self.screen_size = tuple(item for item in screen_size) # make it a tuple as a standard for equality tests in other places.
-        self.bidirectional_supersampling = assure_round_binary(bidirectional_supersampling)
-        self.camera_pos = camera_pos
-        assert view_size.real > 0.0
-        assert view_size.imag > 0.0
-        self.view_size = view_size
+    """
+    def get_sub_view_corner(self, subdivisions_pair, sub_view_coord):
+        # assert all(sub_view_coord[i] <= subdivisions_pair[i] for i in (0,1))
+        return self.corner_pos + parallel_mul_complex_by_floats(self.get_sub_view_size(subdivisions_pair), sub_view_coord)
+
+    def get_sub_view_center(self, subdivisions_pair, sub_view_coord):
+        return self.get_sub_view_corner(subdivisions_pair, (sub_view_coord[0] + 0.5, sub_view_coord[1] + 0.5))
+    """
+    
+def bump(data, amount):
+    return [item+amount for item in data]
+    
+class GridSettings:
+    
+    def __init__(self, view, grid_size):
+        assert all(is_round_binary(item) for item in grid_size)
+        self.grid_size = tuple(iter(grid_size)) # make it a tuple as a standard for equality tests in other places.
+        self.view = view
+        assert self.view.size.real > 0.0
+        assert self.view.size.imag > 0.0
         
-        self.supersize = scale_size(self.screen_size, self.bidirectional_supersampling)
-        self.pixel_size = calc_pixel_size(self.screen_size, self.view_size)
-        self.graveyard_point = (1+abs(self.bidirectional_supersampling))*(16.5 + abs(self.camera_pos) + abs(2.0*self.view_size)) # a complex coordinate that will never appear on camera. Make it so large that there is no doubt.
+        self.cell_size = view.get_sub_view_size(self.grid_size)
+        self.graveyard_point = (16.5 + abs(self.view.center_pos) + abs(2.0*self.view.size)) # a complex coordinate that will never appear on camera. Make it so large that there is no doubt.
         
-    def screen_to_complex(self, screen_coord, centered_sample=None):
-        # assert centered_sample is not None
-        return screen_to_complex(screen_coord, self.screen_size, self.camera_pos, self.view_size, centered_sample=centered_sample)
+    def whole_to_complex(self, whole_coord, centered=None):
+        assert centered is not None
+        return self.view.corner_pos + parallel_mul_complex_by_floats(self.cell_size, (bump(whole_coord) if centered else whole_coord))
         
-    def sample_coord_to_complex(self, sample_coord, centered_sample=None):
-        # assert centered_sample is not None
-        return screen_to_complex(sample_coord, self.supersize, self.camera_pos, self.view_size, centered_sample=centered_sample)
+    def complex_to_whole(self, complex_coord, centered=None):
+        # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
+        complexInView = complex_coord - self.view.corner_pos
+        complexOfCell = parallel_div_complex_by_complex(complexInView, self.cell_size)
+        return (int(complexOfCell.real), int(complexOfCell.imag))
         
-    def complex_to_anygrid_item(self, data, complex_coord, grid_size=None, centered_sample=None):
-        x, y = self.complex_to_anygrid(complex_coord, grid_size=grid_size, centered_sample=centered_sample)
+    def complex_to_item(self, data, complex_coord, centered=None):
+        x, y = self.complex_to_whole(complex_coord, centered=centered)
         return data[y][x]
         
-    def complex_to_screen_item(self, data, complex_coord, centered_sample=None):
-        return self.complex_to_anygrid_item(data, complex_coord, grid_size=self.screen_size, centered_sample=centered_sample)
+    def iter_cell_whole_coords(self):
+        return range2d(self.grid_size[0], self.grid_size[1])
         
-    def complex_to_anygrid(self, complex_coord, grid_size=None, centered_sample=None):
-        # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
-        return complex_to_screen(complex_coord, grid_size, self.camera_pos, self.view_size, centered_sample=centered_sample)
-        
-    def complex_to_screen(self, complex_coord, centered_sample=None):
-        return self.complex_to_anygrid(complex_coord, self.screen_size, centered_sample=centered_sample)
-        
-    def complex_is_on_screen(self, complex_coord, centered_sample=None):
-        assert centered_sample is not None
-        if centered_sample != True:
-            raise NotImplementedError("off-center samples?")
-        viewQuadrantSize = self.view_size / 2.0
-        realAligned = (complex_coord.real > self.camera_pos.real - viewQuadrantSize.real) and (complex_coord.real < self.camera_pos.real + viewQuadrantSize.real)
-        imagAligned = (complex_coord.imag > self.camera_pos.imag - viewQuadrantSize.imag) and (complex_coord.imag < self.camera_pos.imag + viewQuadrantSize.imag)
-        return realAligned and imagAligned
-        
-    def complex_to_sample_coord(self, complex_coord, centered_sample=None):
-        assert False, "this method probably should never be used!"
-        # return complex_to_screen(complex_coord, self.get_supersize(), self.camera_pos, self.view_size, centered_sample=centered_sample)
-        
-    def iter_sample_coords(self):
-        return range2d(self.supersize[0], self.supersize[1])
-        
-    def iter_sample_descriptions(self, centered_sample=None):
-        assert centered_sample is not None
-        for x, y in self.iter_sample_coords():
-            yield (x, y, self.sample_coord_to_complex((x,y), centered_sample=centered_sample))
+    def iter_cell_descriptions(self, centered=None):
+        assert centered is not None
+        for x, y in self.iter_cell_whole_coords():
+            yield (x, y, self.whole_to_complex((x,y), centered=centered))
         
 
 
@@ -580,32 +583,34 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
             vec0[i] += input_scalar
 
 
-def do_buddhabrot(seed_settings, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
+def do_buddhabrot(view, screen_size=None, bidirectional_supersampling=None, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
     assert iter_limit is not None
     assert point_limit is not None
-    output_name="crosscrossbrot_below0.75pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(seed_settings.camera_pos, seed_settings.view_size, iter_limit, point_limit, seed_settings.bidirectional_supersampling, count_scale)
+    output_name="crosscrossbrot_below0.75pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(view.center_pos, view.size, iter_limit, point_limit, bidirectional_supersampling, count_scale)
+    screenSettings = GridSettings(view, screen_size)
+    seedSettings = GridSettings(view, scaled_size(screen_size, bidirectional_supersampling))
+    assert screen_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
     
-    visitCountMatrix = construct_data(screen.get_size()[::-1]+(3,), default_value=0)
+    visitCountMatrix = construct_data(screen_size[::-1], default_value=[0,0,0])
     
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
-    pixelWidth = abs(seed_settings.screen_to_complex((0,0), centered_sample=False) - seed_settings.screen_to_complex((1,0), centered_sample=False))
-    assert pixelWidth == seed_settings.pixel_size.real
+    pixelWidth = screenSettings.cell_size.real
     assert type(pixelWidth) == float
-    assert pixelWidth < 0.1, "is the screen really that small?"
+    assert pixelWidth < 0.1, "is the screen really that small in resolution?"
     
     visitPointListEcho = Echo(length=2)
     
-    for i, x, y, seed in enumerate_flatly(seed_settings.iter_sample_descriptions(centered_sample=False)):
+    for i, (x, y, seed) in enumerate(seedSettings.iter_cell_descriptions(centered=False)):
         
         if x==0 and y%128 == 0:
             specializedDraw()
-            if y%128 == 0 or y == seed_settings.screen_size[1]//2:
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, seed_settings.supersize[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
+            if y%128 == 0 or y == seedSettings.grid_size[1]//2:
+                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, bidirectional_supersampling, drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, escape_radius)]
@@ -628,7 +633,7 @@ def do_buddhabrot(seed_settings, iter_limit=None, point_limit=None, count_scale=
                 assert ii <= point_limit
                 drawingStats["dotCount"] += 1
                 try:
-                    currentCell = seed_settings.complex_to_screen_item(visitCountMatrix, centerPoint, centered_sample=False)
+                    currentCell = screenSettings.complex_to_item(visitCountMatrix, centerPoint, centered=False)
                     vec_add_scalar_masked(currentCell, count_scale, [True, centerPoint.real>leftPoint.real, centerPoint.imag>leftPoint.imag])
                     drawingStats["drawnDotCount"] += 1
                 except IndexError:
@@ -868,8 +873,8 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=256, point_limit=256, count_scale=4)
-# do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8) # <------
+do_buddhabrot(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=4, iter_limit=256, point_limit=256, count_scale=4)
+# do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
