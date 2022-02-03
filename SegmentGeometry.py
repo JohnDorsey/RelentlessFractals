@@ -537,7 +537,7 @@ def polar_space_segment_intersection(seg0, seg1):
         return point_polar_to_rect(polarSectPts[0])
 """
 
-def polar_space_segment_intersection(seg0, seg1):
+def rect_seg_polar_space_intersection(seg0, seg1):
     psegFrags = [seg_rect_to_polar_positive_theta_fragments(currentSeg) for currentSeg in [seg0, seg1]]
     for pseg0frag in psegFrags[0]:
         for pseg1frag in psegFrags[1]:
@@ -549,19 +549,19 @@ def polar_space_segment_intersection(seg0, seg1):
         
 
 try:
-    assert polar_space_segment_intersection((10+1j, 10+20j), (1+10j, 20+10j)) is not None
-    assert polar_space_segment_intersection((1+1j, 2+2j), (1+2j, 2+1j)) is not None
+    assert rect_seg_polar_space_intersection((10+1j, 10+20j), (1+10j, 20+10j)) is not None
+    assert rect_seg_polar_space_intersection((1+1j, 2+2j), (1+2j, 2+1j)) is not None
 
-    assert polar_space_segment_intersection((-10+1j, -10+20j), (-1+10j, -20+10j)) is not None
-    assert polar_space_segment_intersection((-1+1j, -2+2j), (-1+2j, -2+1j)) is not None
+    assert rect_seg_polar_space_intersection((-10+1j, -10+20j), (-1+10j, -20+10j)) is not None
+    assert rect_seg_polar_space_intersection((-1+1j, -2+2j), (-1+2j, -2+1j)) is not None
 
 
-    assert polar_space_segment_intersection((-100+10j, 100+10j), (-5-100j, -5+100j)) is not None
-    assert polar_space_segment_intersection((-100+10j, 100+10j), (5-100j, 5+100j)) is not None
+    assert rect_seg_polar_space_intersection((-100+10j, 100+10j), (-5-100j, -5+100j)) is not None
+    assert rect_seg_polar_space_intersection((-100+10j, 100+10j), (5-100j, 5+100j)) is not None
 
-    assert_nearly_equal(polar_space_segment_intersection((-0.1+0.1j, -1+1j), (0+1j, -1+0j)), ((2.0**0.5)/2.0)*(-1+1j))
-    assert_nearly_equal(polar_space_segment_intersection((0.1+0.1j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
-    assert_nearly_equal(polar_space_segment_intersection((0+0j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
+    assert_nearly_equal(rect_seg_polar_space_intersection((-0.1+0.1j, -1+1j), (0+1j, -1+0j)), ((2.0**0.5)/2.0)*(-1+1j))
+    assert_nearly_equal(rect_seg_polar_space_intersection((0.1+0.1j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
+    assert_nearly_equal(rect_seg_polar_space_intersection((0+0j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
 except AssertionError as ae:
     #print(ae.message)
     print(ae)

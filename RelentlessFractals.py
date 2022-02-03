@@ -9,13 +9,13 @@ import copy
 import pygame
 
 from ColorTools import atan_squish_unsigned, automatic_color, squish_color
-
+import SegmentGeometry
 
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((4096, 4096))
+screen = pygame.display.set_mode((1024, 1024))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -333,7 +333,7 @@ def count_intersections(constrained_journey): #could be made to use much less me
                     result += 1
     return result"""
     
-def gen_intersections(constrained_journey, intersection_fun=SegmentGeometry.segment_intersection): #could use less memory.
+def gen_intersections(constrained_journey, intersection_fun=None): #could use less memory.
     knownSegs = []
     for previousPoint, point in gen_track_previous(constrained_journey):
         assert isinstance(point, complex)
@@ -580,9 +580,10 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
             vec0[i] += input_scalar
 
 
-def do_buddhabrot(seed_settings, iter_limit=None, count_scale=1, escape_radius=4.0):
+def do_buddhabrot(seed_settings, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
     assert iter_limit is not None
-    output_name="crosscrossbrot_below0.5pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itr{}biSuper{}count_".format(seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale)
+    assert point_limit is not None
+    output_name="crosscrossbrot_below0.75pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(seed_settings.camera_pos, seed_settings.view_size, iter_limit, point_limit, seed_settings.bidirectional_supersampling, count_scale)
     
     journeyFun = c_to_mandel_journey
     def specializedDraw():
@@ -601,9 +602,9 @@ def do_buddhabrot(seed_settings, iter_limit=None, count_scale=1, escape_radius=4
     
     for i, x, y, seed in enumerate_flatly(seed_settings.iter_sample_descriptions(centered_sample=False)):
         
-        if x==0 and y%512 == 0:
+        if x==0 and y%128 == 0:
             specializedDraw()
-            if y%512 == 0 or y == seed_settings.screen_size[1]//2:
+            if y%128 == 0 or y == seed_settings.screen_size[1]//2:
                 screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, seed_settings.supersize[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
@@ -613,27 +614,22 @@ def do_buddhabrot(seed_settings, iter_limit=None, count_scale=1, escape_radius=4
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            journeySelfIntersections = gen_intersections(constrainedJourney)
-            doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections)
-            visitPointListEcho.push([item for item in doubleJourneySelfIntersections])
+            journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
+            limitedVisitPointGen = itertools.islice(doubleJourneySelfIntersections, 0, point_limit)
+            visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         if i == 0:
             print("in differential mode, the first point's journey is not drawn.")
         else:
-        
-            limitedVisitPointList = [pointPair[1] for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 0.5*pixelWidth]
+            comparisonMaskedVisitPointPairList = [pointPair for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 0.75*pixelWidth]
             
-            for ii, point in enumerate(limitedVisitPointList):
+            for ii, (leftPoint, centerPoint) in enumerate(comparisonMaskedVisitPointPairList):
+                assert ii <= point_limit
                 drawingStats["dotCount"] += 1
                 try:
-                    currentCell = seed_settings.complex_to_screen_item(visitCountMatrix, point, centered_sample=False)
-                    vec_add_scalar_masked(currentCell, count_scale, [True, point.real > visitPointListEcho.previous[ii].real, point.imag > visitPointListEcho.previous[ii].imag])
-                    if True:
-                        currentCell[0] += count_scale
-                    if point.real > visitPointListEcho.previous[ii].real:
-                        currentCell[1] += count_scale
-                    if point.imag > visitPointListEcho.previous[ii].imag:
-                        currentCell[2] += count_scale
+                    currentCell = seed_settings.complex_to_screen_item(visitCountMatrix, centerPoint, centered_sample=False)
+                    vec_add_scalar_masked(currentCell, count_scale, [True, centerPoint.real>leftPoint.real, centerPoint.imag>leftPoint.imag])
                     drawingStats["drawnDotCount"] += 1
                 except IndexError:
                     # drawnDotCount won't be increased.
@@ -660,8 +656,8 @@ def enumerate_to_depth(data, depth=None):
         for i, item in enumerate(data):
             for longItem in enumerate_to_depth(item, depth=depth-1):
                 yield (i,) + longItem
-assert_equals(list(enumerate_to_depth([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
-assert_equals(list(enumerate_to_depth([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
+assert_equal(list(enumerate_to_depth([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
+assert_equal(list(enumerate_to_depth([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
 
 
 def check_bb_containedness(argless_itercount_fun=None, iter_limit=None, buddhabrot_set_type=None):
@@ -872,8 +868,8 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-# do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=32, count_scale=4)
-do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8) # <------
+do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=256, point_limit=256, count_scale=4)
+# do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8) # <------
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
