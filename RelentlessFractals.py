@@ -11,14 +11,11 @@ import pygame
 from ColorTools import atan_squish_unsigned, automatic_color, squish_color
 
 
-ZERO_DIVISION_NUDGE = 2**-64
-MODULUS_OVERLAP_NUDGE = 2**-48
-LINESEG_INTERSECTION_ERROR_TOLERANCE = 1.0/1000.0
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((4096, 4096))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -33,11 +30,15 @@ def this_module_exec(string):
 
 
 
+def assert_equal(thing0, thing1):
+    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
+
 
 def shape_of(data_to_test):
     result = []
     while hasattr(data_to_test, "__len__"):
         if isinstance(data_to_test, str):
+            print("shape_of: warning: a string will not be treated as a storage object, but this behavior is not standard.")
             break
         result.append(len(data_to_test))
         if result[-1] == 0:
@@ -76,29 +77,17 @@ def assure_round_binary(value):
     return value
 
     
-def assert_equals(thing0, thing1):
-    if isinstance(thing0, complex) and isinstance(thing1, complex):
-        if thing0-thing1 == 0:
-            return
-        elif abs(thing0-thing1) < 2**-36:
-            # print("warning: {} and {} are supposed to be equal.".format(thing0, thing1))
-            return
-        print("this test is failing soon.")
-    if isinstance(thing0, tuple) and isinstance(thing1, tuple):
-        for i in range(max(len(thing0), len(thing1))):
-            assert_equals(thing0[i], thing1[i])
-        return
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
+
     
 
 def screenshot(name_prefix="", name=None):
-    startTime = time.time()
+    startTime = time.perf_counter()
     if name is None:
-        name = "{}{}.png".format(time.time(), str(screen.get_size()).replace(", ","x"))
+        name = "{}{}.png".format(time.perf_counter(), str(screen.get_size()).replace(", ","x"))
     usedName = name_prefix + name
     print("saving file {}.".format(usedName))
     pygame.image.save(screen, usedName)
-    print("saving took {} seconds.".format(time.time()-startTime))
+    print("saving took {} seconds.".format(time.perf_counter()-startTime))
     
     
 def enforce_tuple_length(input_tuple, length, default=None):
@@ -198,7 +187,7 @@ def construct_data(size, default_value=None):
     else:
         return [construct_data(size[1:], default_value=default_value) for i in range(size[0])]
 
-assert_equals(shape_of(construct_data([5,6,7])), [5,6,7])
+assert_equal(shape_of(construct_data([5,6,7])), [5,6,7])
 
 
 def fill_data(data, fill_value):
@@ -330,244 +319,6 @@ def seg1_is_on_both_sides_of_seg0(seg0, seg1):
 """
     
 
-def seg_end_distance_to_point_order_trisign(seg0, point): # 1 = in order, -1 = in reverse order, 0 = neither.
-    assert len(seg0) == 2
-    difference = abs(seg0[1] - point) - abs(seg0[0] - point)
-    if difference > 0.0:
-        return 1
-    elif difference < 0.0:
-        return -1
-    else:
-        assert difference == 0.0
-        return 0
-    
-    
-def sides_of_seg0_occupied_by_seg1(seg0, seg1):
-    seg0midpoint = (seg0[0]+seg0[1])/2.0
-    seg0secondHalfPositionless = seg0[1] - seg0midpoint
-    seg0firstCCWPerpPositionless = seg0secondHalfPositionless * 1.0j # perpendicular
-    seg0thirdCCWPerpPositionless = seg0secondHalfPositionless * 1.0j * 1.0j * 1.0j
-    seg0alphaZoneCorePoint = seg0midpoint + seg0firstCCWPerpPositionless # any point closest to this point is on this side of the segment.
-    seg0betaZoneCorePoint = seg0midpoint + seg0thirdCCWPerpPositionless
-    
-    seg0perp = (seg0alphaZoneCorePoint, seg0betaZoneCorePoint)
-    
-    assert len(seg1) == 2
-    return set(seg_end_distance_to_point_order_trisign(seg0perp, seg1pt) for seg1pt in seg1)
-    
-    
-def seg0_might_intersect_seg1(seg0, seg1):
-    sidesOfSeg1occupied = sides_of_seg0_occupied_by_seg1(seg1, seg0)
-    if len(sidesOfSeg1occupied) == 2:
-        return True # seg0 crosses or touches the infinitely extended seg1.
-    elif None in sidesOfSeg1occupied:
-        assert sidesOfSeg1occupied == {None}
-        return True # seg0 is colinear with the infinitely extended seg1.
-    else:
-        assert sidesOfSeg1occupied == {1} or sidesOfSeg1occupied == {-1}
-        return False
-    
-    
-    
-print("extra assertions are turned off for segments_intersect because they are failing now.")
-
-def segments_intersect(seg0, seg1, extra_assertions=False):
-    result = (seg0_might_intersect_seg1(seg0, seg1) and seg0_might_intersect_seg1(seg1, seg0))
-    if extra_assertions:
-        if result:
-            assert segment_intersection(seg0, seg1, extra_assertions=False) is not None
-    return result
-
-# tests for segments_intersect come later.
-
-
-
-def cross_multiply(vec0, vec1):
-    return vec0[0]*vec1[1] - vec0[1]*vec1[0]
-
-
-def segment_intersection(seg0, seg1, extra_assertions=True):
-    # seg0dir = seg0[1]-seg0[0]
-    # seg1dir = seg1[1]-seg1[0]
-    p = seg0[0]
-    q = seg1[0]
-    r = seg0[1]-seg0[0]
-    s = seg1[1]-seg1[0]
-    # (p+tr) x s = (q+us) x s
-    # p x s + t(r x s) = q x s + u(s x s) = q x s
-    # t(r x s) = (q-p) x s
-    # t = ((q-p) x s)/(r x s)
-    # a x b = a_x*b_y - a_y*b_x
-    qminusp = (q.real-p.real, q.imag-p.imag)
-    rxs = cross_multiply((r.real, r.imag), (s.real, s.imag))
-    if rxs == 0:
-        return None
-    t = cross_multiply(qminusp, (s.real, s.imag)) / rxs
-    # u = (q − p) x r / (r x s)
-    u = cross_multiply(qminusp, (r.real, r.imag)) / rxs
-    seg0intersection = p + t*r
-    seg1intersection = q + u*s
-    errorDistance = abs(seg0intersection - seg1intersection)
-    if errorDistance > 2.0**-64:
-        return None
-    if t < 0 or t > 1 or u < 0 or u > 1:
-        return None
-    if not (min([t - 0, t - 1, u - 0, u - 1]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
-        if extra_assertions:
-            if not segments_intersect(seg0, seg1, extra_assertions=False):
-                print("assertion in segment_intersection would fail for segments_intersect({}, {})".format(seg0, seg1))
-                assert False, (seg0, seg1, errorDistance, t, u)
-    return seg0intersection
-    
-assert not segments_intersect((1+1j, 2+1j), (1+2j, 2+2j))
-assert segments_intersect((1+1j, 2+2j), (1+2j, 2+1j))
-assert not segments_intersect((1+1j, 5+5j), (2+1j, 6+5j))
-    
-assert segment_intersection((1.0+1.0j, 1.0+3.0j), (0.0+2.0j, 2.0+2.0j)) == (1.0+2.0j)
-assert segment_intersection((1.0+1.0j, 1.0+3.0j), (0.0+0.0j, 0.0+2.0j)) == None
-assert segment_intersection((0+0j, 1+1j), (1+0j, 0+1j)) == (0.5+0.5j)
-
-
-def get_complex_angle(c):
-    if c.real == 0:
-        c = c + ZERO_DIVISION_NUDGE
-    return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag < 0 else 0))
-
-assert get_complex_angle(2+2j) == math.pi/4.0
-assert get_complex_angle(-2+2j) == 3*math.pi/4.0
-assert get_complex_angle(-2-2j) == 5*math.pi/4.0
-assert get_complex_angle(2-2j) == 7*math.pi/4.0
-
-assert get_complex_angle(1j) == math.pi/2.0
-assert get_complex_angle(-1j) == 1.5*math.pi
-
-
-def seg_is_valid(seg):
-    return isinstance(seg,tuple) and all(isinstance(item, complex) for item in seg)
-
-
-def polar_seg_is_valid(seg):
-    assert seg_is_valid(seg)
-    return (min(item.imag for item in seg) >= 0 and max(item.imag for item in seg) < 2*math.pi and item.real >= 0)
-    
-    
-def assert_polar_seg_is_valid(seg):
-    assert seg_is_valid(seg)
-    for i, item in enumerate(seg):
-        assert item.imag >= 0, (i, seg)
-        assert item.imag < 2*math.pi, (i, seg)
-        assert item.real >= 0, (i, seg)
-        
-        
-def point_polar_to_rect(polar_pt):
-    rectPt = polar_pt.real*(math.e**(polar_pt.imag*1j))
-    return rectPt
-    
-def point_rect_to_polar(rect_pt):
-    assert isinstance(rect_pt, complex)
-    return (abs(rect_pt)+get_complex_angle(rect_pt)*1j)
-    
-def seg_rect_to_polar(seg):
-    assert len(seg) == 2
-    return tuple(point_rect_to_polar(seg[i]) for i in (0,1))
-    
-def seg_polar_to_rect(seg):
-    assert len(seg) == 2
-    return tuple(point_polar_to_rect(seg[i]) for i in (0,1))
-    
-#tests:
-for testPt in [1+1j, -1+1j, -1-1j, 1-1j]:
-    # assert_equals(testPt, point_rect_to_polar(point_polar_to_rect(testPt))). negative length is not fair.
-    assert_equals(testPt, point_polar_to_rect(point_rect_to_polar(testPt)))
-    
-
-def polar_space_segment_intersection(seg0, seg1):
-    assert seg_is_valid(seg0)
-    assert seg_is_valid(seg1)
-    wrapSegLen = sum(abs(item) for seg in (seg0, seg1) for item in seg)
-    wrapSeg = (0+0j, wrapSegLen+0j)
-    seg0wrapPt = segment_intersection(seg0, wrapSeg)
-    seg1wrapPt = segment_intersection(seg1, wrapSeg)
-    
-    # when a polar segment crosses the wrapSeg, it never is going the long way around the origin. So it must be the shorter of the 2 polar segs connecting its endpts. 
-    polarSeg0 = seg_rect_to_polar(seg0)
-    polarSeg1 = seg_rect_to_polar(seg1)
-    assert_polar_seg_is_valid(polarSeg0)
-    assert_polar_seg_is_valid(polarSeg1)
-    assert_equals(seg_polar_to_rect(polarSeg0), seg0)
-    assert_equals(seg_polar_to_rect(polarSeg1), seg1)
-    # polar segs 0 and 1 are still unsafe. if they are short and cross the wrapSeg, they will be interpreted as their long twins by segment_intersection until the angle component signs are made different in the proper way.
-    # for a segment that wraps:
-    #   the angle component's sign for _one_ of the endpoints must change (by offsetting) and it must always be the one that, when adjusted, makes the segment seem shortest.
-    #   this will always be the one with the higher imag component.
-    
-    if seg0wrapPt is not None:
-        if polarSeg0[0].imag > polarSeg0[1].imag:
-            polarSeg0 = (polarSeg0[0] - 2*math.pi*1j + ZERO_DIVISION_NUDGE*1j, polarSeg0[1])
-            # assert_polar_seg_is_valid(polarSeg0)
-        elif polarSeg0[0].imag < polarSeg0[1].imag:
-            polarSeg0 = (polarSeg0[0], polarSeg0[1] - 2*math.pi*1j + ZERO_DIVISION_NUDGE*1j)
-            # assert_polar_seg_is_valid(polarSeg0)
-        else:
-            raise NotImplementedError()
-    if seg1wrapPt is not None:
-        if polarSeg1[0].imag > polarSeg1[1].imag:
-            polarSeg1 = (polarSeg1[0] - 2*math.pi*1j + ZERO_DIVISION_NUDGE*1j, polarSeg1[1])
-            # assert_polar_seg_is_valid(polarSeg1)
-        elif polarSeg1[0].imag < polarSeg1[1].imag:
-            polarSeg1 = (polarSeg1[0], polarSeg1[1] - 2*math.pi*1j + ZERO_DIVISION_NUDGE*1j)
-            # assert_polar_seg_is_valid(polarSeg1)
-        else:
-            raise NotImplementedError()
-    # assert_polar_seg_is_valid(polarSeg0)
-    # assert_polar_seg_is_valid(polarSeg1)
-    
-    polarWrapSeg = wrapSeg
-    polarSeg0wrapPt = None if seg0wrapPt is None else segment_intersection(polarSeg0, polarWrapSeg)
-    polarSeg1wrapPt = None if seg1wrapPt is None else segment_intersection(polarSeg1, polarWrapSeg)
-    assert_equals(seg0wrapPt is None, polarSeg0wrapPt is None)
-    assert_equals(seg1wrapPt is None, polarSeg1wrapPt is None)
-
-    splitPolarSegs0 = [polarSeg0] if polarSeg0wrapPt is None else [(polarSeg0[0], polarSeg0wrapPt), (polarSeg0wrapPt, polarSeg0[1])]
-    splitPolarSegs1 = [polarSeg1] if polarSeg1wrapPt is None else [(polarSeg1[0], polarSeg1wrapPt), (polarSeg1wrapPt, polarSeg1[1])]
-    assert len(splitPolarSegs0) in (1,2)
-    assert len(splitPolarSegs1) in (1,2)
-    # these new segs must all have proper angle components between 0 and 2pi.
-    splitPolarSegs0 = [tuple(seg[itemi].real+(seg[itemi].imag%(2*math.pi-MODULUS_OVERLAP_NUDGE))*1j for itemi in (0,1)) for seg in splitPolarSegs0]
-    splitPolarSegs1 = [tuple(seg[itemi].real+(seg[itemi].imag%(2*math.pi-MODULUS_OVERLAP_NUDGE))*1j for itemi in (0,1)) for seg in splitPolarSegs1]
-    for testPolarSeg in (splitPolarSegs0 + splitPolarSegs1):
-        assert_polar_seg_is_valid(testPolarSeg)
-        
-    polarSectPts = [segment_intersection(testPolarSeg0, testPolarSeg1) for testPolarSeg0 in splitPolarSegs0 for testPolarSeg1 in splitPolarSegs1]
-    polarSectPts = [polarSectPt for polarSectPt in polarSectPts if polarSectPt is not None]
-    
-    assert len(polarSectPts) <= 1 # doesn't properly succeed with intersection _at_ the theta==0 line.
-    if len(polarSectPts) == 0:
-        return None
-    else:
-        assert len(polarSectPts) == 1
-        # polarSectPt = polarSectPts[0]
-        return point_polar_to_rect(polarSectPts[0])
-        
-
-try:
-    assert polar_space_segment_intersection((10+1j, 10+20j), (1+10j, 20+10j)) is not None
-    assert polar_space_segment_intersection((1+1j, 2+2j), (1+2j, 2+1j)) is not None
-
-    assert polar_space_segment_intersection((-10+1j, -10+20j), (-1+10j, -20+10j)) is not None
-    assert polar_space_segment_intersection((-1+1j, -2+2j), (-1+2j, -2+1j)) is not None
-
-
-    assert polar_space_segment_intersection((-100+10j, 100+10j), (-5-100j, -5+100j)) is not None
-    assert polar_space_segment_intersection((-100+10j, 100+10j), (5-100j, 5+100j)) is not None
-
-    assert_equals(polar_space_segment_intersection((-0.1+0.1j, -1+1j), (0+1j, -1+0j)), ((2.0**0.5)/2.0)*(-1+1j))
-    assert_equals(polar_space_segment_intersection((0.1+0.1j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
-    assert_equals(polar_space_segment_intersection((0+0j, 1+1j), (0+1j, 1+0j)), ((2.0**0.5)/2.0)*(1+1j))
-except AssertionError as ae:
-    #print(ae.message)
-    print(ae)
-
 
 """
 def count_intersections(constrained_journey): #could be made to use much less memory.
@@ -582,7 +333,7 @@ def count_intersections(constrained_journey): #could be made to use much less me
                     result += 1
     return result"""
     
-def gen_intersections(constrained_journey, intersection_fun=segment_intersection): #could use less memory.
+def gen_intersections(constrained_journey, intersection_fun=SegmentGeometry.segment_intersection): #could use less memory.
     knownSegs = []
     for previousPoint, point in gen_track_previous(constrained_journey):
         assert isinstance(point, complex)
@@ -595,7 +346,7 @@ def gen_intersections(constrained_journey, intersection_fun=segment_intersection
                     yield intersection
 
     
-def count_float_local_minima(input_seq): #does not recognize any minimum with more than one identical value in a row.
+def count_float_local_minima(input_seq): # does not recognize any minimum with more than one identical value in a row.
     result = 0
     history = [None, None]
     for item in input_seq:
@@ -954,7 +705,36 @@ def mean(input_seq):
     return sumSoFar / float(itemCount)
 
 
+
+
 i_SEED, i_CURRENT_Z, i_PREVIOUS_Z, i_ISINSET = (0, 1, 2, 3)
+
+
+def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_set_type=None, centered_sample=None):
+    print("constructing empty panel...")
+
+    statusRateLimiter = PygameDashboard.RateLimiter(3.0)
+
+    assert seed_settings.supersize[0] <= 4096, "make sure there is enough memory for this!"
+    panel = construct_data(seed_settings.supersize[::-1], default_value=None)
+    
+    print("populating panel...")
+    
+    assert abs(seed_settings.graveyard_point) > escape_radius
+    for x, y, seed in seed_settings.iter_sample_descriptions(centered_sample=centered_sample):
+        panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
+        panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=(lambda: c_to_mandel_itercount_fast(seed, iter_limit, escape_radius)),
+            iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type,
+        )
+        panel[y][x] = panelCell
+        if x == 0 and statusRateLimiter.get_judgement():
+            print("create_panel: {}%...".format(str(int(float(100*y)/seed_settings.supersize[1])).rjust(2," ")))
+        # assert seed_settings.complex_to_screen(seed, centered_sample=False) == (x, y) # not to screen... not if supersampling is allowed.
+    # assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,) # not true anymore.
+    print("done creating panel.")
+    return panel
+
+
 
 
 
@@ -963,11 +743,13 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
-    outputColorSummary = "Rcgave1of2guestspairmidptGpairmidptsBgroupmidpt"
+    outputColorSummary = "top(RguestpaircmidptbothinsetGoneinsetBneitherinset)bottom(endpt)"
     output_name="normal_{}_{}_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
     
+    print("creating visitCountMatrix...")
     visitCountMatrix = construct_data(seed_settings.screen_size[::-1]+(3,), default_value=0)
     assert tuple(shape_of(visitCountMatrix)) == screen.get_size()[::-1]+(3,) # this isn't affected by supersampling! that comes later!
+    
     
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
@@ -975,26 +757,14 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         assert name_prefix is not None
         specializedDraw()
         screenshot(name_prefix=name_prefix)
-    constructSupersized = lambda defVal: construct_data(seed_settings.supersize[::-1], default_value=defVal)
     
     
-    assert seed_settings.supersize[0] <= 4096, "make sure there is enough memory for this!"
-    panel = constructSupersized(None)
-    
-    assert abs(seed_settings.graveyard_point) > escape_radius
-    for x, y, seed in seed_settings.iter_sample_descriptions(centered_sample=False):
-        panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
-        panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=(lambda: c_to_mandel_itercount_fast(seed, iter_limit, escape_radius)),
-            iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type,
-        )
-        panel[y][x] = panelCell
-        # assert seed_settings.complex_to_screen(seed, centered_sample=False) == (x, y) # not to screen... not if supersampling is allowed.
-    # assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,) # not true anymore.
-    print("done initializing panel data.")
+    panel = create_panel(seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False)
     
     
     hotelGrid = construct_data(seed_settings.supersize[::-1], default_value=[])
     assert hotelGrid[0][0] is not hotelGrid[0][1]
+    print("done creating hotelGrid.")
     
     
     for iter_index in range(0, iter_limit):
@@ -1028,23 +798,20 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
                 
             for guestA, guestB in gen_ordered_item_pairs(hotel):
                 guestPairMidpoint = (guestA + guestB) / 2.0
-                try:
-                    visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, guestPairMidpoint, centered_sample=False)
-                except IndexError:
-                    continue # the point is not on the screen.
-                if len(hotel) == 2:
-                    visitCountMatrixCell[0] += count_scale
-                else:
-                    assert len(hotel) > 2
-                    visitCountMatrixCell[1] += count_scale
-                    
-            if len(hotel) > 2:
-                guestGroupMidpoint = mean(hotel)
-                try:
-                    visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, guestGroupMidpoint, centered_sample=False)
-                except IndexError:
-                    continue # the point is not on the screen.
-                visitCountMatrixCell[2] += count_scale
+                
+                guestApanelCell, guestBpanelCell = [seed_settings.complex_to_anygrid_item(panel, guest, grid_size=seed_settings.supersize, centered_sample=False) for guest in (guestA, guestB)]
+                guestAisInSet, guestBisInSet = (guestApanelCell[i_ISINSET], guestBpanelCell[i_ISINSET])
+                mask = [(guestAisInSet == guestBisInSet == True), (guestAisInSet != guestBisInSet), (guestAisInSet == guestBisInSet == False)]
+                
+                for itemIsAllowed, item in [(guestA.imag > 0, guestA), (guestB.imag > 0, guestB), (guestPairMidpoint.imag < 0, guestPairMidpoint)]:
+                    if not itemIsAllowed:
+                        continue
+                    try:
+                        visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, item, centered_sample=False)
+                    except IndexError:
+                        continue # the point is not on the screen.
+                    vec_add_scalar_masked(visitCountMatrixCell, count_scale, mask)
+            
         for hotelY, hotelX, hotel in enumerate_to_depth(hotelGrid, depth=2):
             hotel.clear()
             
@@ -1106,7 +873,7 @@ print("done testing.")
 
 #test_abberation([0], 0, 16384)
 # do_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=4), iter_limit=32, count_scale=4)
-do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=16384, output_interval_iters=8, count_scale=8) # <------
+do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8) # <------
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
