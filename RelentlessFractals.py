@@ -15,7 +15,7 @@ import SegmentGeometry
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((2048, 2048))
+screen = pygame.display.set_mode((512, 512))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -134,11 +134,33 @@ def draw_squished_ints_to_screen(channels, access_order=None):
     print("drawing squished ints to screen took {} seconds.".format(time.time()-startTime))
             
 
-
+"""
 def range2d(width, height):
     for y in range(height):
         for x in range(width):
             yield x, y
+"""
+            
+def higher_range(descriptions, iteration_order=None):
+    if iteration_order is not None:
+        assert len(iteration_order) == len(descriptions)
+        assert sorted(iteration_order) == list(range(len(iteration_order)))
+        reorderedDescriptions = [None for i in range(len(descriptions))]
+        for srcIndex, destIndex in enumerate(iteration_order):
+            reorderedDescriptions[destIndex] = descriptions[srcIndex]
+        for unorderedItem in higher_range(reorderedDescriptions):
+            reorderedItem = tuple(unorderedItem[srcIndex] for srcIndex in iteration_order)
+            yield reorderedItem
+            
+    assert len(descriptions) > 0
+    
+    if len(descriptions) == 1:
+        for i in range(*descriptions[0]):
+            yield (i,)
+    else:
+        for i in range(*descriptions[0]):
+            for extension in higher_range(descriptions[1:]):
+                yield (i,) + extension
 
 
 """
@@ -521,13 +543,26 @@ class GridSettings:
         x, y = self.complex_to_whole(complex_coord, centered=centered)
         return data[y][x]
         
-    def iter_cell_whole_coords(self):
-        return range2d(self.grid_size[0], self.grid_size[1])
+    def iter_cell_whole_coords(self, range_descriptions=None, swap_iteration_order=False):
+        if range_descriptions is None:
+            range_descriptions = [(0, s, 1) for s in self.grid_size]
+        iterationOrder = [0,1]
+        if swap_iteration_order:
+            iterationOrder = iterationOrder[::-1]
+        return higher_range(range_descriptions, iteration_order=iterationOrder)
         
-    def iter_cell_descriptions(self, centered=None):
+    def iter_cell_descriptions(self, range_descriptions=None, swap_iteration_order=False, centered=None):
         assert centered is not None
-        for x, y in self.iter_cell_whole_coords():
+        for x, y in self.iter_cell_whole_coords(range_descriptions=range_descriptions, swap_iteration_order=swap_iteration_order):
             yield (x, y, self.whole_to_complex((x,y), centered=centered))
+        
+
+class Camera:
+    def __init__(self, view, screen_size=None, bidirectional_supersampling=None):
+        self.view, self.screen_size, self.bidirectional_supersampling = (view, screen_size, bidirectional_supersampling)
+        supersize = scaled_size(self.screen_size, self.bidirectional_supersampling)
+        self.seed_settings = GridSettings(self.view, supersize)
+        self.screen_settings = GridSettings(self.view, self.screen_size)
         
 
 
@@ -583,34 +618,37 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
             vec0[i] += input_scalar
 
 
-def do_buddhabrot(view, screen_size=None, bidirectional_supersampling=None, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
     assert iter_limit is not None
     assert point_limit is not None
-    output_name="crosscrossbrot_below0.75pixSep_RallGincrvsleftBincivsleft_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(view.center_pos, view.size, iter_limit, point_limit, bidirectional_supersampling, count_scale)
-    screenSettings = GridSettings(view, screen_size)
-    seedSettings = GridSettings(view, scaled_size(screen_size, bidirectional_supersampling))
-    assert screen_size == screen.get_size()
+    output_name="crosscrossbrot_below0.75pixSep_top(RallGincrvsleftBincivsleft)bottom(up)_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
     
-    visitCountMatrix = construct_data(screen_size[::-1], default_value=[0,0,0])
+    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
     
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
-    pixelWidth = screenSettings.cell_size.real
+    pixelWidth = camera.screen_settings.cell_size.real
     assert type(pixelWidth) == float
     assert pixelWidth < 0.1, "is the screen really that small in resolution?"
     
     visitPointListEcho = Echo(length=2)
     
-    for i, (x, y, seed) in enumerate(seedSettings.iter_cell_descriptions(centered=False)):
+    cellDescriptionGen = itertools.chain(
+        camera.seed_settings.iter_cell_descriptions(range_descriptions=[(0, s//2, 1) for s in camera.seed_settings.grid_size], centered=False),
+        camera.seed_settings.iter_cell_descriptions(range_descriptions=[(s//2, s, 1) for s in camera.seed_settings.grid_size], swap_iteration_order=True, centered=False),
+    )
+    
+    for i, (x, y, seed) in enumerate(cellDescriptionGen):
         
         if x==0 and y%128 == 0:
             specializedDraw()
-            if y%128 == 0 or y == seedSettings.grid_size[1]//2:
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, bidirectional_supersampling, drawingStats["drawnDotCount"], drawingStats["dotCount"]))
+            if y%128 == 0 or y == camera.seed_settings.grid_size[1]//2:
+                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.bidirectional_supersampling, drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, escape_radius)]
@@ -633,7 +671,7 @@ def do_buddhabrot(view, screen_size=None, bidirectional_supersampling=None, iter
                 assert ii <= point_limit
                 drawingStats["dotCount"] += 1
                 try:
-                    currentCell = screenSettings.complex_to_item(visitCountMatrix, centerPoint, centered=False)
+                    currentCell = camera.screen_settings.complex_to_item(visitCountMatrix, centerPoint, centered=False)
                     vec_add_scalar_masked(currentCell, count_scale, [True, centerPoint.real>leftPoint.real, centerPoint.imag>leftPoint.imag])
                     drawingStats["drawnDotCount"] += 1
                 except IndexError:
@@ -716,13 +754,13 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
 
     statusRateLimiter = PygameDashboard.RateLimiter(3.0)
 
-    assert seed_settings.supersize[0] <= 4096, "make sure there is enough memory for this!"
-    panel = construct_data(seed_settings.supersize[::-1], default_value=None)
+    assert seed_settings.grid_size[0] <= 4096, "make sure there is enough memory for this!"
+    panel = construct_data(seed_settings.grid_size[::-1], default_value=None)
     
     print("populating panel...")
     
     assert abs(seed_settings.graveyard_point) > escape_radius
-    for x, y, seed in seed_settings.iter_sample_descriptions(centered_sample=centered_sample):
+    for x, y, seed in seed_settings.iter_cell_descriptions(centered=centered_sample):
         panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
         panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=(lambda: c_to_mandel_itercount_fast(seed, iter_limit, escape_radius)),
             iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type,
@@ -730,8 +768,7 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
         panel[y][x] = panelCell
         if x == 0 and statusRateLimiter.get_judgement():
             print("create_panel: {}%...".format(str(int(float(100*y)/seed_settings.supersize[1])).rjust(2," ")))
-        # assert seed_settings.complex_to_screen(seed, centered_sample=False) == (x, y) # not to screen... not if supersampling is allowed.
-    # assert tuple(shape_of(panel)) == screen.get_size()[::-1]+(2,) # not true anymore.
+            
     print("done creating panel.")
     return panel
 
@@ -739,17 +776,17 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
 
 
 
-def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=4.0, buddhabrot_set_type="bb"):
+def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=4.0, buddhabrot_set_type="bb"):
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
     outputColorSummary = "top(RguestpaircmidptbothinsetGoneinsetBneitherinset)bottom(endpt)"
-    output_name="normal_{}_{}_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, seed_settings.camera_pos, seed_settings.view_size, iter_limit, seed_settings.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
+    output_name="normal_{}_{}_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, camera.view.center_pos, camera.view.size, iter_limit, camera.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
     
     print("creating visitCountMatrix...")
-    visitCountMatrix = construct_data(seed_settings.screen_size[::-1]+(3,), default_value=0)
-    assert tuple(shape_of(visitCountMatrix)) == screen.get_size()[::-1]+(3,) # this isn't affected by supersampling! that comes later!
+    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
+    assert tuple(shape_of(visitCountMatrix)) == camera.screen_settings.grid_size()[::-1]+(3,)
     
     
     def specializedDraw():
@@ -760,10 +797,10 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         screenshot(name_prefix=name_prefix)
     
     
-    panel = create_panel(seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False)
+    panel = create_panel(camera.seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False)
     
     
-    hotelGrid = construct_data(seed_settings.supersize[::-1], default_value=[])
+    hotelGrid = construct_data(camera.seed_settings.grid_size[::-1], default_value=[])
     assert hotelGrid[0][0] is not hotelGrid[0][1]
     print("done creating hotelGrid.")
     
@@ -780,7 +817,7 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if abs(panelCell[i_CURRENT_Z]) > escape_radius:
                 # using continue here without overwriting the value causes visual bugs. I don't know the reason yet.
-                panelCell[i_CURRENT_Z] = seed_settings.graveyard_point
+                panelCell[i_CURRENT_Z] = camera.seed_settings.graveyard_point
                 # assert abs(panelCell[i_CURRENT]) > escape_radius
             else:
                 panelCell[i_CURRENT_Z] = panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED]
@@ -789,10 +826,11 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
         
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             try:
-                hotel = seed_settings.complex_to_anygrid_item(hotelGrid, panelCell[i_CURRENT_Z], grid_size=seed_settings.supersize, centered_sample=False)
+                hotel = camera.seed_settings.complex_to_item(hotelGrid, panelCell[i_CURRENT_Z], centered=False)
             except IndexError:
                 continue # out of bounds
             hotel.append(panelCell[i_SEED])
+            
         for hotelY, hotelX, hotel in enumerate_to_depth(hotelGrid, depth=2):
             if len(hotel) < 2:
                 continue
@@ -800,7 +838,7 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
             for guestA, guestB in gen_ordered_item_pairs(hotel):
                 guestPairMidpoint = (guestA + guestB) / 2.0
                 
-                guestApanelCell, guestBpanelCell = [seed_settings.complex_to_anygrid_item(panel, guest, grid_size=seed_settings.supersize, centered_sample=False) for guest in (guestA, guestB)]
+                guestApanelCell, guestBpanelCell = [camera.seed_settings.complex_to_item(panel, guest, centered=False) for guest in (guestA, guestB)]
                 guestAisInSet, guestBisInSet = (guestApanelCell[i_ISINSET], guestBpanelCell[i_ISINSET])
                 mask = [(guestAisInSet == guestBisInSet == True), (guestAisInSet != guestBisInSet), (guestAisInSet == guestBisInSet == False)]
                 
@@ -808,7 +846,7 @@ def do_panel_buddhabrot(seed_settings, iter_limit=None, output_interval_iters=1,
                     if not itemIsAllowed:
                         continue
                     try:
-                        visitCountMatrixCell = seed_settings.complex_to_screen_item(visitCountMatrix, item, centered_sample=False)
+                        visitCountMatrixCell = camera.screen_settings.complex_to_item(visitCountMatrix, item, centered_sample=False)
                     except IndexError:
                         continue # the point is not on the screen.
                     vec_add_scalar_masked(visitCountMatrixCell, count_scale, mask)
@@ -836,7 +874,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
                 continue
 
             try:
-                visitCountMatrixCell = seed_settings.complex_to_screen_item(visit_count_matrix, panelCell[i_CURRENT_Z], centered_sample=centered_sample)
+                visitCountMatrixCell = seed_settings.complex_to_item(visit_count_matrix, panelCell[i_CURRENT_Z], centered_sample=centered_sample)
             except IndexError:
                 continue # the point is not on the screen.
 
@@ -873,7 +911,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=4, iter_limit=256, point_limit=256, count_scale=4)
+do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=4)
 # do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
