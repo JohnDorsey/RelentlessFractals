@@ -364,7 +364,7 @@ def segment_intersection(seg0, seg1, extra_assertions=True):
         return None
     if t < 0 or t > 1 or u < 0 or u > 1:
         return None
-    if not (min([t - 0, t - 1, u - 0, u - 1]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
+    if not (min([t - 0, 1 - t, u - 0, 1 - u]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
         if extra_assertions:
             if not segments_intersect(seg0, seg1, extra_assertions=False):
                 print("assertion in segment_intersection would fail for segments_intersect({}, {})".format(seg0, seg1))
@@ -420,33 +420,57 @@ assert_nearly_equal(get_complex_angle(-1j), 1.5*math.pi)
 
 
 def seg_is_valid(seg):
-    return isinstance(seg,tuple) and all(isinstance(item, complex) for item in seg)
+    return isinstance(seg, tuple) and all(isinstance(item, complex) for item in seg) and len(seg) == 2
 
 
 def seg_length(seg):
     return abs(seg[1] - seg[0])
 
+"""
 def polar_seg_is_valid(seg):
     assert seg_is_valid(seg)
     return (min(item.imag for item in seg) >= 0 and max(item.imag for item in seg) < 2*math.pi and item.real >= 0)
-    
+"""
     
 def assert_polar_seg_is_valid(seg):
     assert seg_is_valid(seg)
-    for i, item in enumerate(seg):
-        assert item.imag >= 0, (i, seg)
-        assert item.imag < 2*math.pi, (i, seg)
-        assert item.real >= 0, (i, seg)
+    for item in seg:
+        assert 0 <= item.imag < 2*math.pi, seg
+        assert item.real >= 0, seg
     
     
 
     
     
-    
+
 def seg_horizontal_line_intersection(seg, height=None):
     segImags = [seg[0].imag, seg[1].imag]
-    (segImagMinIndex, segImagMin), segImagMax = (find_min(segImags), max(segImags))
+    segImagMin, segImagMax = (min(segImags), max(segImags))
     if segImagMax < height or segImagMin > height:
+        return None
+    segRise = segImagMax - segImagMin
+    interceptRise = height - segImagMin
+    assert interceptRise >= 0.0
+    if segRise == 0:
+        return None # not quite right!
+    interceptT = interceptRise / segRise
+    
+    # lerpSeg = (seg if (segImagMinIndex == 0) else seg[::-1])
+    if 0.0 <= interceptT <= 1.0:
+        return lerp_confined(seg[0], seg[1], interceptT if seg[0].imag<seg[1].imag else 1-interceptT)
+    else:
+        return None
+
+    
+    
+# if math.copysign(1.0, seg[0].imag)*math.copysign(1.0, seg[1].imag) >= 0:
+    
+def seg_real_axis_intersection(seg):
+    return seg_horizontal_line_intersection(seg, height=0.0)
+"""
+    segImags = [seg[0].imag, seg[1].imag]
+    segImagMin, segImagMax = (min(segImags), max(segImags))
+    if segImagMax < 0 or segImagMin > 0:
         return None
     segRise = segImagMax - segImagMin
     interceptRise = height - segImagMin
@@ -456,14 +480,12 @@ def seg_horizontal_line_intersection(seg, height=None):
     except ZeroDivisionError:
         return None # !!!!!!!
     
-    lerpSeg = (seg if (segImagMinIndex == 0) else seg[::-1])
+    # lerpSeg = (seg if (segImagMinIndex == 0) else seg[::-1])
     if 0.0 <= interceptT <= 1.0:
-        return lerp_confined(lerpSeg[0], lerpSeg[1], interceptT)
+        return lerp_confined(seg[0], seg[1], interceptT if seg[0].imag<seg[1].imag else 1-interceptT)
     else:
-        return None
+        return None"""
     
-def seg_real_axis_intersection(seg):
-    return seg_horizontal_line_intersection(seg, height=0.0)
 assert_nearly_equal(seg_real_axis_intersection((-1-1j, 1+1j)), 0+0j)
 assert_nearly_equal(seg_real_axis_intersection((5-1j, 8+2j)), 6+0j)
 assert_nearly_equal(seg_real_axis_intersection((5+1j, 8-2j)), 6+0j)
@@ -484,12 +506,11 @@ def rect_seg_seam_intersection(seg):
         
         
 def point_polar_to_rect(polar_pt):
-    rectPt = polar_pt.real*(math.e**(polar_pt.imag*1j))
-    return rectPt
+    return polar_pt.real*(math.e**(polar_pt.imag*1j))
     
     
 def point_rect_to_polar(rect_pt):
-    assert isinstance(rect_pt, complex)
+    # assert isinstance(rect_pt, complex)
     return complex(abs(rect_pt), get_complex_angle(rect_pt))
     
     

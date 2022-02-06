@@ -15,7 +15,7 @@ import SegmentGeometry
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((512, 512))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -944,7 +944,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=128, point_limit=128, count_scale=8)
+do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=4), iter_limit=64, point_limit=64, count_scale=8)
 # do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
