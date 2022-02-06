@@ -3,13 +3,15 @@
 
 import time
 import sys
+import copy
 
 import Qwerty
 
 import pygame
 
-QUIT_EVENT_TYPES = {pygame.K_ESCAPE, pygame.KSCAN_ESCAPE, pygame.QUIT}
 
+
+QUIT_EVENT_TYPES = {pygame.K_ESCAPE, pygame.KSCAN_ESCAPE, pygame.QUIT}
 
 parent_module_exec = None
 
@@ -77,17 +79,29 @@ def noneisnew_or_assure_isinstance(input_value, required_type):
 
 
 class KeyStateTracker:
-    def __init__(self, key_codes, key_modes=None):
+    class SimplifiedKeyEvent:
+        def __init__(self, key, _type):
+            self.key, self.type = (key, _type)
+
+    def __init__(self, key_codes, key_report_styles=None, key_registration_aliases=None):
+        #  key_report_preprocessors=None
         self.key_codes = key_codes
-        self.key_states = {code:{"is_down":False, "odd_downs":False, "odd_ups":False} for code in self.key_codes}
-        self.key_modes = noneisnew_or_assure_isinstance(key_modes, dict)
+        self.key_states = {code:{"is_down":False, "odd_downs":False, "odd_ups":False, "is_new":False} for code in self.key_codes}
+        self.key_report_styles = noneisnew_or_assure_isinstance(key_report_styles, dict)
+        self.key_registration_aliases = noneisnew_or_assure_isinstance(key_registration_aliases, dict)
+        # self.key_report_preprocessors = key_report_preprocessors
         # self.key_code_aliases = noneisnew_or_assure_isinstance(key_code_aliases, dict)
         
-    def register(self, event):
+    def register_event(self, event):
         if event.type not in [pygame.KEYDOWN, pygame.KEYUP]:
             return False
         if event.key not in self.key_codes:
-            return False
+            if event.key not in self.key_registration_aliases:
+                return False
+            else:
+                alternativeKeyCode = self.key_registration_aliases[event.key]
+                return self.register_event(self.SimplifiedKeyEvent(alternativeKeyCode, event.type))
+                
         state = self.key_states[event.key]
         if event.type == pygame.KEYDOWN:
             state["is_down"] = True
@@ -97,21 +111,41 @@ class KeyStateTracker:
             state["odd_ups"] = not state["odd_ups"]
         else:
             assert False
+        state["is_new"] = True
         return True
+        
+    def register_or_passthrough_event(self, event):
+        success = self.register_event(event)
+        if success:
+            return None
+        else:
+            return event
+            
+    def register_or_passthrough_events(self, event_seq):
+        for event in event_seq:
+            currentResult = self.register_or_passthrough_event(event)
+            if currentResult is not None:
+                yield currentResult
     
     def get_state(self, key_code):
-        return self.key_states[key_code]
+        state = self.key_states[key_code]
+        result = copy.deepcopy(state)
+        state["is_new"] = False
+        return result
         
-    def get_translated_state(self, key_code):
-        if key_code not in self.key_modes:
-            raise KeyError("no mode set for key with code {}.".format(key_code))
+    def get_stylized_report(self, key_code):
+        if key_code not in self.key_report_styles:
+            raise KeyError("no report style set for key with code {}.".format(key_code))
         else:
-            return self.get_state(key_code)[self.key_modes[key_code]]
+            return self.get_state(key_code)[self.key_report_styles[key_code]]
             
-    def get_translated_states(self, key_codes):
-        return [self.get_translated_state(keyCode) for keyCode in key_codes]
+    def get_stylized_reports(self, key_codes):
+        return [self.get_stylized_report(keyCode) for keyCode in key_codes]
         
     
+    
+    
+
 def is_exact_key_event(event, test_type, key_code):
     if event.type == test_type:
         if event.key == key_code:
@@ -317,17 +351,25 @@ def clear_events_of_types(event_type_seq):
 
 
 
-def stall_pygame(preferred_exec=None, clear_quit_events=True):
+def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=(128,128)):
     print("stall.")
     
-    keyTrack = KeyStateTracker([pygame.K_CAPSLOCK, pygame.K_LSHIFT, pygame.K_RSHIFT], key_modes={pygame.K_LSHIFT:"is_down", pygame.K_RSHIFT:"is_down", pygame.K_CAPSLOCK:"odd_downs"})
+    if autostart_display is not None:
+        if pygame.display.get_surface() is None:
+            pygame.display.set_mode(autostart_display)
+            
+    if clear_quit_events:
+        clear_events_of_types(QUIT_EVENT_TYPES)
+    
+    keyTrack = KeyStateTracker(
+        [pygame.K_CAPSLOCK, "shift"],
+        key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
+        key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
+    )
     
     monitoredComStr = MonitoredValue("", pygame.display.set_caption)
     screenRateLimiter = RateLimiter(0.1)
     eventRateLimiter = RateLimiter(1/120.0)
-    
-    if clear_quit_events:
-        clear_events_of_types(QUIT_EVENT_TYPES)
     
     while True:
         
@@ -343,7 +385,7 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True):
                 pygame.display.quit()
                 return
                 
-            keyWasTracked = keyTrack.register(event)
+            keyWasTracked = keyTrack.register_event(event)
             if keyWasTracked:
                 continue
                 
@@ -354,8 +396,7 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True):
                 continue
             
             if event.type == pygame.KEYDOWN:
-                capslockState, lshiftState, rshiftState = keyTrack.get_translated_states([pygame.K_CAPSLOCK, pygame.K_LSHIFT, pygame.K_RSHIFT])
-                shiftState = lshiftState or rshiftState
+                capslockState, shiftState = keyTrack.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
                 monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, capslockState, shiftState))
                 continue
     assert False

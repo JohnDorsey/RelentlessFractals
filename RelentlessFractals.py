@@ -15,7 +15,7 @@ import SegmentGeometry
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((512, 512))
+screen = pygame.display.set_mode((1024, 1024))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -120,10 +120,10 @@ def draw_squished_ints_to_screen(channels, access_order=None):
         
     try:
         for y in range(ySize):
+            if y%1024 == 0:
+                pygame.display.flip()
             for x in range(xSize):
-                if x==0 and y%128 == 0:
-                    pygame.display.flip()
-                color = enforce_tuple_length(tuple(int(atan_squish_unsigned(colorDataGetter(x, y, chi), 255)) for chi in range(cSize)), 3, default=0)
+                color = tuple(int(atan_squish_unsigned(colorDataGetter(x, y, chi), 255)) for chi in range(cSize))
                 # assert max(color) < 256
                 # assert min(color) >= 0
                 screen.set_at((x, y), color)
@@ -141,16 +141,7 @@ def range2d(width, height):
             yield x, y
 """
             
-def higher_range(descriptions, iteration_order=None):
-    if iteration_order is not None:
-        assert len(iteration_order) == len(descriptions)
-        assert sorted(iteration_order) == list(range(len(iteration_order)))
-        reorderedDescriptions = [None for i in range(len(descriptions))]
-        for srcIndex, destIndex in enumerate(iteration_order):
-            reorderedDescriptions[destIndex] = descriptions[srcIndex]
-        for unorderedItem in higher_range(reorderedDescriptions):
-            reorderedItem = tuple(unorderedItem[srcIndex] for srcIndex in iteration_order)
-            yield reorderedItem
+def higher_range_linear(descriptions):
             
     assert len(descriptions) > 0
     
@@ -162,6 +153,20 @@ def higher_range(descriptions, iteration_order=None):
             for extension in higher_range(descriptions[1:]):
                 yield (i,) + extension
 
+def higher_range(descriptions, iteration_order=None):
+    if iteration_order is not None:
+        assert len(iteration_order) == len(descriptions)
+        assert sorted(iteration_order) == list(range(len(iteration_order)))
+        reorderedDescriptions = [None for i in range(len(descriptions))]
+        for srcIndex, destIndex in enumerate(iteration_order):
+            reorderedDescriptions[destIndex] = descriptions[srcIndex]
+        for unorderedItem in higher_range_linear(reorderedDescriptions):
+            reorderedItem = tuple(unorderedItem[srcIndex] for srcIndex in iteration_order)
+            yield reorderedItem
+    else:
+        for item in higher_range_linear(descriptions):
+            yield item
+            
 
 """
 def capture_exits(input_fun):
@@ -249,6 +254,14 @@ def c_to_mandel_journey(c):
         z = z**2 + c
         
         
+def c_must_be_in_mandelbrot(c):
+    circles = [(complex(-1.0, 0.0), 0.24), (complex(0.5, 0.0),2.45)]
+    for circle in circles:
+        if abs(c - circle[0]) < circle[1]:
+            return True
+    return False
+        
+        
 def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
     z = 0
     yield z
@@ -260,7 +273,7 @@ def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
         
         
         
-        
+"""
 def journey_to_itercount(journey, iter_limit, escape_radius): #outdated.
     for i, point in enumerate(journey):
         if i >= iter_limit:
@@ -268,7 +281,7 @@ def journey_to_itercount(journey, iter_limit, escape_radius): #outdated.
         if abs(point) > escape_radius:
             return i
     assert False, "incomplete journey."
-    
+"""
     
 """
 def c_and_journey_fun_to_itercount(journey_fun, c, iter_limit, escape_radius): #outdated.
@@ -391,8 +404,8 @@ def get_seeds(screen_size: tuple, camera_pos: complex, view_size: complex, cente
 def parallel_div_complex_by_floats(view_size, screen_size):
     return complex(view_size.real/screen_size[0], view_size.imag/screen_size[1])
     
-def parallel_mul_complex_by_floats(complex_val, int_pair):
-    return complex(complex_val.real * int_pair[0], complex_val.imag * int_pair[1])
+def parallel_mul_complex_by_floats(complex_val, float_pair):
+    return complex(complex_val.real * float_pair[0], complex_val.imag * float_pair[1])
     
 def parallel_div_complex_by_complex(val0, val1):
     return complex(val0.real/val1.real, val0.imag/val1.imag)
@@ -517,6 +530,16 @@ class View:
 def bump(data, amount):
     return [item+amount for item in data]
     
+
+
+class Camera:
+    def __init__(self, view, screen_size=None, bidirectional_supersampling=None):
+        self.view, self.screen_size, self.bidirectional_supersampling = (view, screen_size, bidirectional_supersampling)
+        supersize = scaled_size(self.screen_size, self.bidirectional_supersampling)
+        self.seed_settings = GridSettings(self.view, supersize)
+        self.screen_settings = GridSettings(self.view, self.screen_size)
+        
+    
 class GridSettings:
     
     def __init__(self, view, grid_size):
@@ -531,7 +554,7 @@ class GridSettings:
         
     def whole_to_complex(self, whole_coord, centered=None):
         assert centered is not None
-        return self.view.corner_pos + parallel_mul_complex_by_floats(self.cell_size, (bump(whole_coord) if centered else whole_coord))
+        return self.view.corner_pos + parallel_mul_complex_by_floats(self.cell_size, (bump(whole_coord, 0.5) if centered else whole_coord))
         
     def complex_to_whole(self, complex_coord, centered=None):
         # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
@@ -546,7 +569,7 @@ class GridSettings:
     def iter_cell_whole_coords(self, range_descriptions=None, swap_iteration_order=False):
         if range_descriptions is None:
             range_descriptions = [(0, s, 1) for s in self.grid_size]
-        iterationOrder = [0,1]
+        iterationOrder = [1,0]
         if swap_iteration_order:
             iterationOrder = iterationOrder[::-1]
         return higher_range(range_descriptions, iteration_order=iterationOrder)
@@ -555,14 +578,11 @@ class GridSettings:
         assert centered is not None
         for x, y in self.iter_cell_whole_coords(range_descriptions=range_descriptions, swap_iteration_order=swap_iteration_order):
             yield (x, y, self.whole_to_complex((x,y), centered=centered))
-        
-
-class Camera:
-    def __init__(self, view, screen_size=None, bidirectional_supersampling=None):
-        self.view, self.screen_size, self.bidirectional_supersampling = (view, screen_size, bidirectional_supersampling)
-        supersize = scaled_size(self.screen_size, self.bidirectional_supersampling)
-        self.seed_settings = GridSettings(self.view, supersize)
-        self.screen_settings = GridSettings(self.view, self.screen_size)
+            
+testGrid = GridSettings(View(0+0j, 4+4j), (2,2))
+SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=False)), [(0, 0, -2-2j), (1, 0, 0-2j), (0, 1, -2+0j), (1, 1, 0+0j)])
+SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=True)), [(0, 0, -1-1j), (1, 0, 1-1j), (0, 1, -1+1j), (1, 1, 1+1j)])
+del testGrid
         
 
 
@@ -619,9 +639,11 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
 
 
 def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
+    print("do_buddhabrot started.")
     assert iter_limit is not None
     assert point_limit is not None
-    output_name="crosscrossbrot_below0.75pixSep_top(RallGincrvsleftBincivsleft)bottom(up)_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    # top(RallGincrvsleftBincivsleft)bottom(up)
+    output_name="polar_cross_bb_RallGincrBinci_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
@@ -633,22 +655,27 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
     pixelWidth = camera.screen_settings.cell_size.real
-    assert type(pixelWidth) == float
     assert pixelWidth < 0.1, "is the screen really that small in resolution?"
     
     visitPointListEcho = Echo(length=2)
     
-    cellDescriptionGen = itertools.chain(
-        camera.seed_settings.iter_cell_descriptions(range_descriptions=[(0, s//2, 1) for s in camera.seed_settings.grid_size], centered=False),
-        camera.seed_settings.iter_cell_descriptions(range_descriptions=[(s//2, s, 1) for s in camera.seed_settings.grid_size], swap_iteration_order=True, centered=False),
-    )
+    def drawPoint(mainPoint=None, comparisonPoint=None):
+        drawingStats["dotCount"] += 1
+        try:
+            currentCell = camera.screen_settings.complex_to_item(visitCountMatrix, mainPoint, centered=False)
+            vec_add_scalar_masked(currentCell, count_scale, [True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
+            drawingStats["drawnDotCount"] += 1
+        except IndexError:
+            # drawnDotCount won't be increased.
+            pass
+    
+    cellDescriptionGen = camera.seed_settings.iter_cell_descriptions(centered=False)
     
     for i, (x, y, seed) in enumerate(cellDescriptionGen):
         
-        if x==0 and y%128 == 0:
+        if (x==0) and (y%1024 == 0 or y%(camera.seed_settings.grid_size[1]//4) == 0):
             specializedDraw()
-            if y%128 == 0 or y == camera.seed_settings.grid_size[1]//2:
-                screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.bidirectional_supersampling, drawingStats["drawnDotCount"], drawingStats["dotCount"]))
+            screenshot(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.seed_settings.grid_size[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, escape_radius)]
@@ -657,31 +684,37 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
-            limitedVisitPointGen = itertools.islice(doubleJourneySelfIntersections, 0, point_limit)
+            journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            #doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            
+            limitedVisitPointGen = itertools.islice(journeySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
+        # non-differential mode:
+        
+        for ii, currentPoint in enumerate(visitPointListEcho.current):
+            # if abs(currentPoint - seed) > 0.0625:
+            #    continue
+            drawPoint(mainPoint=currentPoint, comparisonPoint=seed)
+        
+        # differential mode:
+        """
         if i == 0:
             print("in differential mode, the first point's journey is not drawn.")
         else:
-            comparisonMaskedVisitPointPairList = [pointPair for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 0.75*pixelWidth]
+            comparisonMaskedVisitPointPairList = [pointPair for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 1*pixelWidth]
             
             for ii, (leftPoint, centerPoint) in enumerate(comparisonMaskedVisitPointPairList):
                 assert ii <= point_limit
                 drawingStats["dotCount"] += 1
-                try:
-                    currentCell = camera.screen_settings.complex_to_item(visitCountMatrix, centerPoint, centered=False)
-                    vec_add_scalar_masked(currentCell, count_scale, [True, centerPoint.real>leftPoint.real, centerPoint.imag>leftPoint.imag])
-                    drawingStats["drawnDotCount"] += 1
-                except IndexError:
-                    # drawnDotCount won't be increased.
-                    pass
+                drawPoint(mainPoint=centerPoint, comparisonPoint=leftPoint)
             # modify_visit_count_matrix(visitCountMatrix, ((curTrackPt, True, (curTrackPt.real>prevTrackPt.real), (curTrackPt.imag>prevTrackPt.imag)...
-                
+        """
+    print("doing final draw...")
     specializedDraw()
+    print("doing final screenshot...")
     screenshot(name_prefix=output_name)
-
+    print("do_buddhabrot done.")
 
 
 def quadrilateral_is_convex(points):
@@ -911,7 +944,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=4)
+do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=128, point_limit=128, count_scale=8)
 # do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)

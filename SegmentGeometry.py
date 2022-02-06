@@ -12,7 +12,7 @@ COMPLEX_ERROR_TOLERANCE = (2**-36)
 
 
 
-def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
+def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
     err = val0 - val1
     errMagnitude = abs(err)
     if errMagnitude == 0:
@@ -21,30 +21,48 @@ def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANC
         # print("warning: {} and {} are supposed to be equal.".format(val0, val1))
         return True
     else:
+        if debug:
+            print("test_complex_nearly_equal: debug: {} is not nearly equal to {}, err is {}, errMagnitude is {}.".format(val0, val1, err, errMagnitude))
         return False
         
 
 def _assert_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
-    assert test_complex_nearly_equal(val0, val1, error_tolerance=error_tolerance), "{} is not close enough to {} with tolerance setting {}.".format(val0, val1, error_tolerance)
+    assert test_complex_nearly_equal(val0, val1, error_tolerance=error_tolerance, debug=True), "{} is not close enough to {} with tolerance setting {}.".format(val0, val1, error_tolerance)
     """
     "the difference between {} and {} is {} with length {} - that's {} times greater than the error tolerance {}.".format(
             val0, val1, err, errMagnitude, str(errMagnitude/error_tolerance),
         )
     """
     
-def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
+def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
+    head = "test_nearly_equal: debug: "
     if isinstance(thing0, complex) and isinstance(thing1, complex):
-        return test_complex_nearly_equal(thing0, thing1, error_tolerance=error_tolerance)
-    elif isinstance(thing0, tuple) and isinstance(thing1, tuple):
-        return all(test_nearly_equal(thing0[i], thing1[i], error_tolerance=error_tolerance) for i in range(max(len(thing0), len(thing1))))
+        result = test_complex_nearly_equal(thing0, thing1, error_tolerance=error_tolerance)
+        if debug and not result:
+            print(head + "failed in br0.")
+        return result
+    elif any(isinstance(thing0, testEnterable) and isinstance(thing1, testEnterable) for testEnterable in (tuple, list)):
+        if len(thing0) != len(thing1):
+            if debug:
+                print(head + "lengths differ.")
+            return False
+        result = all(test_nearly_equal(thing0[i], thing1[i], error_tolerance=error_tolerance) for i in range(max(len(thing0), len(thing1))))
+        if debug and not result:
+            print(head + "failed in br1.")
+        return result
     else:
-        return thing0 == thing1
-        
+        result = (thing0 == thing1)
+        if debug and not result:
+            print(head + "failed in br2.")
+        return result
 
 def assert_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
-    assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance), "{} does not nearly equal {}.".format(repr(thing0), repr(thing1))
+    assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance, debug=True), "{} does not nearly equal {}.".format(repr(thing0), repr(thing1))
 
 
+def assure_positive(val):
+    assert not val <= 0
+    return val
 
 
 
@@ -258,35 +276,46 @@ def seg_end_distance_to_point_order_trisign(seg0, point): # 1 = in order, -1 = i
     elif difference < 0.0:
         return -1
     else:
-        assert difference == 0.0
+        # assert difference == 0.0
         return 0
     
-    
-def sides_of_seg0_occupied_by_seg1(seg0, seg1):
+def seg_quarter_turn_around_midpoint(seg0):
     seg0midpoint = (seg0[0]+seg0[1])/2.0
     seg0secondHalfPositionless = seg0[1] - seg0midpoint
+    """
     seg0firstCCWPerpPositionless = seg0secondHalfPositionless * 1.0j # perpendicular
     seg0thirdCCWPerpPositionless = seg0secondHalfPositionless * 1.0j * 1.0j * 1.0j
     seg0alphaZoneCorePoint = seg0midpoint + seg0firstCCWPerpPositionless # any point closest to this point is on this side of the segment.
     seg0betaZoneCorePoint = seg0midpoint + seg0thirdCCWPerpPositionless
     
     seg0perp = (seg0alphaZoneCorePoint, seg0betaZoneCorePoint)
+    """
+    return (seg0midpoint + (seg0secondHalfPositionless * 1.0j), seg0midpoint + (seg0secondHalfPositionless * -1.0j))
+    
+"""
+def sides_of_seg0_occupied_by_seg1(seg0, seg1): # works but uses set.
+    seg0perp = seg_quarter_turn_around_midpoint(seg0)
     
     assert len(seg1) == 2
     return set(seg_end_distance_to_point_order_trisign(seg0perp, seg1pt) for seg1pt in seg1)
     
     
-def seg0_might_intersect_seg1(seg0, seg1):
+def seg0_might_intersect_seg1(seg0, seg1): # works but uses set.
     sidesOfSeg1occupied = sides_of_seg0_occupied_by_seg1(seg1, seg0)
+    assert None not in sidesOfSeg1occupied
     if len(sidesOfSeg1occupied) == 2:
         return True # seg0 crosses or touches the infinitely extended seg1.
-    elif None in sidesOfSeg1occupied:
-        assert sidesOfSeg1occupied == {None}
-        return True # seg0 is colinear with the infinitely extended seg1.
+        # elif None in sidesOfSeg1occupied:
+        #     assert sidesOfSeg1occupied == {None}
+        #     return True # seg0 is colinear with the infinitely extended seg1.
     else:
         assert sidesOfSeg1occupied == {1} or sidesOfSeg1occupied == {-1}
         return False
-    
+"""
+def seg0_might_intersect_seg1(seg0, seg1):
+    seg1perp = seg_quarter_turn_around_midpoint(seg1)
+    return ((seg_end_distance_to_point_order_trisign(seg1perp, seg0[0]) * seg_end_distance_to_point_order_trisign(seg1perp, seg0[1])) != 1) # return true if trisigns are anything other than (-1,-1) or (1,1).
+        
     
     
 # print("extra assertions are turned off for segments_intersect because they are failing now.")
@@ -351,18 +380,43 @@ assert basic_complex_fuzz_io(segment_intersection)((1.0+1.0j, 1.0+3.0j), (0.0+0.
 assert basic_complex_fuzz_io(segment_intersection)((0+0j, 1+1j), (1+0j, 0+1j)) == (0.5+0.5j)
 
 
+
+
+
+
+
+
+
+
+
+
+
+"""
 def get_complex_angle(c):
     if c.real == 0:
         c = c + ZERO_DIVISION_NUDGE
-    return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag < 0 else 0.0))
+    return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag <= 0 else 0.0))
+"""
+def get_complex_angle(c):
+    if c.real == 0:
+        return (0.5*math.pi if c.imag >= 0 else 1.5*math.pi)
+    if c.imag == 0:
+        return (0 if c.real >= 0 else math.pi)
+        
+    if c.imag < 0:
+        return math.pi + get_complex_angle(complex(-c.real, assure_positive(-c.imag)))
+    if c.real < 0:
+        # return math.pi*0.5 + get_complex_angle(complex(c.imag, assure_positive(-c.real)
+        return math.pi*0.5 + get_complex_angle(c/complex(0,1))
+    return math.atan(c.imag/c.real)
+    
+assert_nearly_equal(get_complex_angle(2+2j), math.pi/4.0)
+assert_nearly_equal(get_complex_angle(-2+2j), 3*math.pi/4.0)
+assert_nearly_equal(get_complex_angle(-2-2j), 5*math.pi/4.0)
+assert_nearly_equal(get_complex_angle(2-2j), 7*math.pi/4.0)
 
-assert get_complex_angle(2+2j) == math.pi/4.0
-assert get_complex_angle(-2+2j) == 3*math.pi/4.0
-assert get_complex_angle(-2-2j) == 5*math.pi/4.0
-assert get_complex_angle(2-2j) == 7*math.pi/4.0
-
-assert get_complex_angle(1j) == math.pi/2.0
-assert get_complex_angle(-1j) == 1.5*math.pi
+assert_nearly_equal(get_complex_angle(1j), math.pi/2.0)
+assert_nearly_equal(get_complex_angle(-1j), 1.5*math.pi)
 
 
 def seg_is_valid(seg):
@@ -385,21 +439,36 @@ def assert_polar_seg_is_valid(seg):
         assert item.real >= 0, (i, seg)
     
     
+
+    
+    
+    
 def seg_horizontal_line_intersection(seg, height=None):
-    segImags = list(imags(seg))
+    segImags = [seg[0].imag, seg[1].imag]
     (segImagMinIndex, segImagMin), segImagMax = (find_min(segImags), max(segImags))
     if segImagMax < height or segImagMin > height:
         return None
     segRise = segImagMax - segImagMin
     interceptRise = height - segImagMin
     assert interceptRise >= 0.0
-    interceptT = segRise / interceptRise
+    try:
+        interceptT = interceptRise / segRise
+    except ZeroDivisionError:
+        return None # !!!!!!!
     
-    lerpSeg = seg if segImagMinIndex == 0 else seg[::-1]
-    return lerp_confined(lerpSeg[0], lerpSeg[1], interceptT)
+    lerpSeg = (seg if (segImagMinIndex == 0) else seg[::-1])
+    if 0.0 <= interceptT <= 1.0:
+        return lerp_confined(lerpSeg[0], lerpSeg[1], interceptT)
+    else:
+        return None
     
 def seg_real_axis_intersection(seg):
     return seg_horizontal_line_intersection(seg, height=0.0)
+assert_nearly_equal(seg_real_axis_intersection((-1-1j, 1+1j)), 0+0j)
+assert_nearly_equal(seg_real_axis_intersection((5-1j, 8+2j)), 6+0j)
+assert_nearly_equal(seg_real_axis_intersection((5+1j, 8-2j)), 6+0j)
+assert_nearly_equal(seg_real_axis_intersection((-5-1j, -8+2j)), -6+0j)
+assert_nearly_equal(seg_real_axis_intersection((-5+1j, -8-2j)), -6+0j)
 
 
 def rect_seg_seam_intersection(seg):
@@ -443,11 +512,11 @@ def seg_rect_to_polar_positive_theta_fragments(seg):
     if seamIntersection is None:
         fragmentSegs = [pseg]
     else:
-        assert 0.0 <= seamIntersection.imag <= COMPLEX_ERROR_TOLERANCE
-        pSeamIntersectionNeutral = point_rect_to_polar(seamIntersection)
-        assert 0.0 <= pSeamIntersectionNeutral.imag <= COMPLEX_ERROR_TOLERANCE
+        assert abs(seamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE, seamIntersection
+        pSeamIntersectionNeutral = complex(abs(seamIntersection), 0.0) # can't use normal rect to polar method, it sometimes gives 2pi.
+        assert abs(pSeamIntersectionNeutral.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersectionNeutral
         shiftAddition = complex(0, 2.0*math.pi)
-        psegImagMinIndex, psegImagMin = find_min(imags(pseq)) # the index will identify which half of the split segment is in the negative and must be shifted.
+        psegImagMinIndex, psegImagMin = find_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
         assert psegImagMin <= 0.0, "this should be impossible because seamIntersection was found."
         fragmentPointPairs = [[pseg[0], pSeamIntersectionNeutral], [pSeamIntersectionNeutral, pseg[1]]]
         pointPairToShift = fragmentPointPairs[psegImagMinIndex]
