@@ -5,11 +5,21 @@ import itertools
 
 
 ZERO_DIVISION_NUDGE = 2**-64
-MODULUS_OVERLAP_NUDGE = 2**-48
+MODULUS_OVERLAP_NUDGE = 2**-16
+MODULUS_OVERLAP_SCALE_NUDGE = 1j**MODULUS_OVERLAP_NUDGE
 LINESEG_INTERSECTION_ERROR_TOLERANCE = 1.0/1000.0
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
 
+
+
+class UndefinedAtBoundaryType:
+    def __init__(self):
+        pass
+UndefinedAtBoundary = UndefinedAtBoundaryType()
+
+class UndefinedAtBoundaryError(ValueError):
+    pass
 
 
 def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
@@ -279,7 +289,7 @@ def seg_end_distance_to_point_order_trisign(seg0, point): # 1 = in order, -1 = i
         # assert difference == 0.0
         return 0
     
-def seg_quarter_turn_around_midpoint(seg0):
+def seg_turned_quarter_turn_around_midpoint(seg0):
     seg0midpoint = (seg0[0]+seg0[1])/2.0
     seg0secondHalfPositionless = seg0[1] - seg0midpoint
     """
@@ -313,7 +323,7 @@ def seg0_might_intersect_seg1(seg0, seg1): # works but uses set.
         return False
 """
 def seg0_might_intersect_seg1(seg0, seg1):
-    seg1perp = seg_quarter_turn_around_midpoint(seg1)
+    seg1perp = seg_turned_quarter_turn_around_midpoint(seg1)
     return ((seg_end_distance_to_point_order_trisign(seg1perp, seg0[0]) * seg_end_distance_to_point_order_trisign(seg1perp, seg0[1])) != 1) # return true if trisigns are anything other than (-1,-1) or (1,1).
         
     
@@ -398,11 +408,17 @@ def get_complex_angle(c):
     return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag <= 0 else 0.0))
 """
 def get_complex_angle(c):
+    if c.imag == 0:
+        if c.real > 0:
+            return 0
+        elif c.real < 0:
+            return math.pi
+        else:
+            return UndefinedAtBoundary
+            # raise UndefinedAtBoundaryError("can't get complex angle of point on seam.")
+            
     if c.real == 0:
         return (0.5*math.pi if c.imag >= 0 else 1.5*math.pi)
-    if c.imag == 0:
-        return (0 if c.real >= 0 else math.pi)
-        
     if c.imag < 0:
         return math.pi + get_complex_angle(complex(-c.real, assure_positive(-c.imag)))
     if c.real < 0:
@@ -440,33 +456,51 @@ def assert_polar_seg_is_valid(seg):
     
     
 
+def seg_multiplied_by_complex(seg, val):
+    return (seg[0] * val, seg[1] * val)
+
     
+def complex_swap_complex_components(val):
+    return complex(val.imag, val.real)
+
+def seg_swap_complex_components(val):
+    return [complex_swap_components(seg[i]) for i in (0,1)]
     
 
-def seg_horizontal_line_intersection(seg, height=None):
+def seg_horizontal_line_intersection(seg, imag_pos=None):
     segImags = [seg[0].imag, seg[1].imag]
     segImagMin, segImagMax = (min(segImags), max(segImags))
-    if segImagMax < height or segImagMin > height:
+    if segImagMax < imag_pos or segImagMin > imag_pos:
         return None
     segRise = segImagMax - segImagMin
-    interceptRise = height - segImagMin
+    interceptRise = imag_pos - segImagMin
     assert interceptRise >= 0.0
     if segRise == 0:
-        return None # not quite right!
+        raise UndefinedAtBoundaryError("flat slope.")
     interceptT = interceptRise / segRise
     
     # lerpSeg = (seg if (segImagMinIndex == 0) else seg[::-1])
-    if 0.0 <= interceptT <= 1.0:
+    if 0.0 < interceptT < 1.0:
         return lerp_confined(seg[0], seg[1], interceptT if seg[0].imag<seg[1].imag else 1-interceptT)
+    elif 0.0 <= interceptT <= 1.0:
+        raise UndefinedAtBoundaryError("end touch.")
     else:
         return None
 
+def seg_vertical_line_intersection(seg, real_pos=None):
+    workingSeg = seg_swap_complex_components(seg)
+    result = seg_swap_complex_components(seg_horizontal_line_intersection(workingSeg, real_pos))
+    return result
+    
     
     
 # if math.copysign(1.0, seg[0].imag)*math.copysign(1.0, seg[1].imag) >= 0:
     
 def seg_real_axis_intersection(seg):
-    return seg_horizontal_line_intersection(seg, height=0.0)
+    return seg_horizontal_line_intersection(seg, imag_pos=0.0)
+    
+def seg_imag_axis_intersection(seg):
+    return seg_vertical_line_intersection(seg, real_pos=0.0)
 """
     segImags = [seg[0].imag, seg[1].imag]
     segImagMin, segImagMax = (min(segImags), max(segImags))
@@ -501,7 +535,7 @@ def rect_seg_seam_intersection(seg):
         return None
     if realAxisIntersection.real == 0.0:
         # print("rect_seg_crosses_polar_seam: warning: returning None for seg crossing origin.")
-        return None
+        raise UndefinedAtBoundaryError("seg crossing origin.")
     return realAxisIntersection
         
         
@@ -511,12 +545,19 @@ def point_polar_to_rect(polar_pt):
     
 def point_rect_to_polar(rect_pt):
     # assert isinstance(rect_pt, complex)
-    return complex(abs(rect_pt), get_complex_angle(rect_pt))
+    theta = get_complex_angle(rect_pt)
+    if theta is UndefinedAtBoundary:
+        return UndefinedAtBoundary
+    return complex(abs(rect_pt), theta)
     
     
-def seg_rect_to_polar_and_seam_intersection(seg):
+def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
     assert len(seg) == 2
     resultPair = [point_rect_to_polar(seg[i]) for i in (0, 1)]
+    for i in (0,1):
+        if resultPair[i] is UndefinedAtBoundary:
+            # resultPair[i] = complex(seg[i].real, MODULUS_OVERLAP_NUDGE * (1 if resultPair[1-i].imag < math.pi else -1))
+            raise UndefinedAtBoundaryError("seam intersection would be endpoint {} only. resultPair is {} for seg {}.".format(i, resultPair, seg))
     maxThetaIndex, maxTheta = find_max(imags(resultPair))
     seamIntersection = rect_seg_seam_intersection(seg)
     if seamIntersection is not None:
@@ -527,25 +568,49 @@ def seg_rect_to_polar_and_seam_intersection(seg):
     assert seg_is_valid(result)
     return (result, seamIntersection)
     
+def seg_rect_to_polar_and_polar_space_seam_intersection(seg):
+    pseg, rectSpaceSeamIntersection = seg_rect_to_polar_and_rect_space_seam_intersection(seg)
+    polarSpaceSeamIntersection = rect_seg_seam_intersection(pseg) # pretend polar seg is rect to solve for polar space seg seam intersection.
+    if rectSpaceSeamIntersection is not None:
+        assert polarSpaceSeamIntersection is not None
+        assert abs(polarSpaceSeamIntersection) >= abs(rectSpaceSeamIntersection)
+        assert abs(polarSpaceSeamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE
+    else:
+        if polarSpaceSeamIntersection is not None:
+            raise UndefinedAtBoundaryError("there was a polar space seam intersection but not a rect space one!")
+        # print("seg_rect_to_polar_and_polar_space_seam_intersection: warning: 
+        # if this case is ignored, the consequences are not obvious, but it might cause unecessary splits. This might be erring on the side of caution to reduce visual bugs.
+        pass
+    return (pseg, polarSpaceSeamIntersection)
 
 def seg_rect_to_polar_positive_theta_fragments(seg):
-    pseg, seamIntersection = seg_rect_to_polar_and_seam_intersection(seg)
-    if seamIntersection is None:
+    # raise NotImplementedError("still has major bugs.")
+    pseg, pSeamIntersection = seg_rect_to_polar_and_polar_space_seam_intersection(seg)
+    if pSeamIntersection is None:
         fragmentSegs = [pseg]
     else:
-        assert abs(seamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE, seamIntersection
-        pSeamIntersectionNeutral = complex(abs(seamIntersection), 0.0) # can't use normal rect to polar method, it sometimes gives 2pi.
+        assert abs(pSeamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersection
+        pSeamIntersectionNeutral = complex(abs(pSeamIntersection), 0.0)
+        # ^^^ HAA! doing this to a rect space seam intersection point was probably a source of visual bugs! the intersection point in rect space is not the same as in polar space! ever!
         assert abs(pSeamIntersectionNeutral.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersectionNeutral
         shiftAddition = complex(0, 2.0*math.pi)
         psegImagMinIndex, psegImagMin = find_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
+        if psegImagMin == 0.0:
+            raise UndefinedAtBoundaryError("???1, {}".format(seg))
         assert psegImagMin <= 0.0, "this should be impossible because seamIntersection was found."
         fragmentPointPairs = [[pseg[0], pSeamIntersectionNeutral], [pSeamIntersectionNeutral, pseg[1]]]
         pointPairToShift = fragmentPointPairs[psegImagMinIndex]
         for i in (0, 1):
             pointPairToShift[i] += shiftAddition
         fragmentSegs = [tuple(pointPair) for pointPair in fragmentPointPairs]
-        assert min(min(imags(testSeg)) for testSeg in fragmentSegs) >= 0.0, "shift process apparently failed."
-    assert len(fragmentSegs) in (1,2)
+        
+        testMin = min(min(imags(testSeg)) for testSeg in fragmentSegs)
+        if testMin == 0.0:
+            raise UndefinedAtBoundaryError("???2, {}".format(seg))
+        assert testMin > 0.0, "shift process apparently failed."
+    assert len(fragmentSegs) in (1,2), (fragmentSegs, seg, pseg, pSeamIntersection)
+    assert_nearly_equal(point_polar_to_rect(fragmentSegs[0][0]), seg[0])
+    assert_nearly_equal(point_polar_to_rect(fragmentSegs[-1][1]), seg[1])
     return fragmentSegs
     
 def seg_polar_to_rect(seg):
@@ -627,8 +692,19 @@ def polar_space_segment_intersection(seg0, seg1):
         return point_polar_to_rect(polarSectPts[0])
 """
 
+
 def rect_seg_polar_space_intersection(seg0, seg1):
-    psegFrags = [seg_rect_to_polar_positive_theta_fragments(currentSeg) for currentSeg in [seg0, seg1]]
+    """
+    if any((pt.imag == 0 and abs(pt.real) > 0.01) for seg in (seg0, seg1) for pt in seg): # this is a dumb fix to visual bugs that won't always be necessary.
+        result = rect_seg_polar_space_intersection(seg_multiplied_by_complex(seg0, MODULUS_OVERLAP_SCALE_NUDGE), seg_multiplied_by_complex(seg1, MODULUS_OVERLAP_SCALE_NUDGE))
+        if result is not None:
+            result /= MODULUS_OVERLAP_SCALE_NUDGE
+        return result
+    """
+    try:
+        psegFrags = [seg_rect_to_polar_positive_theta_fragments(currentSeg) for currentSeg in [seg0, seg1]]
+    except UndefinedAtBoundaryError:
+        return None
     for pseg0frag in psegFrags[0]:
         for pseg1frag in psegFrags[1]:
             pIntersection = segment_intersection(pseg0frag, pseg1frag)
@@ -636,6 +712,10 @@ def rect_seg_polar_space_intersection(seg0, seg1):
                 assert isinstance(pIntersection, complex)
                 return point_polar_to_rect(pIntersection)
     return None
+
+#def rect_seg_polar_space_intersection(seg0, seg1):
+    
+        
         
 
 try:
