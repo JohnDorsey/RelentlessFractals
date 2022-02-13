@@ -9,13 +9,14 @@ import copy
 import pygame
 
 from ColorTools import atan_squish_unsigned, automatic_color, squish_color
-import SegmentGeometry
 
+import SegmentGeometry
+from SegmentGeometry import assert_equal
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((64, 64))
+screen = pygame.display.set_mode((1024, 1024))
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -29,9 +30,6 @@ def this_module_exec(string):
 # PygameDashboard.parent_module_exec = this_module_exec
 
 
-
-def assert_equal(thing0, thing1):
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
 
 
 def shape_of(data_to_test):
@@ -611,14 +609,7 @@ class Echo:
         return self.history[-2]
 
 """
-def compose_functions(function_list):
-    assert len(function_list) > 0
-    def inner(input_arg):
-        result = None
-        for fun in function_list:
-            result = fun(result)
-        return result
-    return inner
+
     
 
 def scaled_vec(vec0, scale):
@@ -643,7 +634,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     assert iter_limit is not None
     assert point_limit is not None
     # top(RallGincrvsleftBincivsleft)bottom(up)
-    output_name="polar_cross_cross_bb_RallGincrBinci_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    output_name="polar_cross_bb_RallGincrBinci_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
@@ -685,9 +676,9 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             continue
         else:
             journeySelfIntersections = gen_intersections(constrainedJourney, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
-            doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            # doubleJourneySelfIntersections = gen_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
             
-            limitedVisitPointGen = itertools.islice(doubleJourneySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(journeySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -944,7 +935,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=64, point_limit=64, count_scale=8)
+do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=64, point_limit=64, count_scale=4)
 # do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)

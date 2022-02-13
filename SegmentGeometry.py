@@ -10,16 +10,34 @@ MODULUS_OVERLAP_SCALE_NUDGE = 1j**MODULUS_OVERLAP_NUDGE
 LINESEG_INTERSECTION_ERROR_TOLERANCE = 1.0/1000.0
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
+COMPLEX_EQUALITY_DISTANCE = (2**-36)
+
+EXTRA_ASSERTIONS = True
+
+if not EXTRA_ASSERTIONS:
+    for i in range(10):
+        print("EXTRA_ASSERTIONS IS FALSE in SegmentGeometry.py")
 
 
-
+"""
 class UndefinedAtBoundaryType:
-    def __init__(self):
-        pass
-UndefinedAtBoundary = UndefinedAtBoundaryType()
-
+    def __init__(self, message):
+        self.message = message
+UndefinedAtBoundary = UndefinedAtBoundaryType("generic")
+"""
 class UndefinedAtBoundaryError(ValueError):
     pass
+
+
+
+
+
+
+def assert_equal(thing0, thing1):
+    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
+
+
+
 
 
 def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
@@ -97,6 +115,7 @@ def lerp_confined(point0, point1, t):
     
     
 
+
 def peek_first_and_iter(input_seq):
     inputGen = iter(input_seq)
     try:
@@ -133,8 +152,47 @@ def find_max(data):
 
 
 
+def assert_empty(input_seq):
+    inputGen = iter(input_seq)
+    try:
+        first = next(inputGen)
+    except StopIteration:
+        return
+    assert False, "input seq was not empty, first item was {}.".format(repr(first))
+    
+
+def gen_chunks_as_lists(data, length):
+    itemGen = iter(data)
+    while True:
+        chunk = [item for item in itertools.islice(itemGen, 0, length)]
+        yield chunk
+        if len(chunk) < length:
+            assert_empty(itemGen)
+            return
+        else:
+            assert len(chunk) == length
+    assert False
 
 
+def compose_single_arg_function(func, depth=None):
+    assert depth >= 0
+    def compose_single_arg_function_inner(*args, **kwargs):
+        assert len(args) == 1, "that wasn't the deal. must be single arg."
+        result = args[0]
+        for i in range(0, depth):
+            result = func(result, **kwargs)
+        return result
+    return compose_single_arg_function_inner
+"""
+def compose_functions(function_list):
+    assert len(function_list) > 0
+    def inner(input_arg):
+        result = None
+        for fun in function_list:
+            result = fun(result)
+        return result
+    return inner
+"""
 
 
 
@@ -206,9 +264,7 @@ def complex_pair_parallel_div(val0, val1):
     return complex(val0.real/val1.real, val0.imag/val1.imag)
     
     
-    
-    
-    
+
     
     
 
@@ -282,11 +338,13 @@ def seg_end_distance_to_point_order_trisign(seg0, point): # 1 = in order, -1 = i
     assert len(seg0) == 2
     difference = abs(seg0[1] - point) - abs(seg0[0] - point)
     if difference > 0.0:
+        assert not difference == 0.0
         return 1
     elif difference < 0.0:
+        assert not difference == 0.0
         return -1
     else:
-        # assert difference == 0.0
+        assert difference == 0.0
         return 0
     
 def seg_turned_quarter_turn_around_midpoint(seg0):
@@ -301,7 +359,10 @@ def seg_turned_quarter_turn_around_midpoint(seg0):
     seg0perp = (seg0alphaZoneCorePoint, seg0betaZoneCorePoint)
     """
     return (seg0midpoint + (seg0secondHalfPositionless * 1.0j), seg0midpoint + (seg0secondHalfPositionless * -1.0j))
-    
+
+for testSeg in itertools.permutations(list(complex(x,y) for y in range(-2,2) for x in range(-2,2)), 2):
+    assert_nearly_equal(compose_single_arg_function(seg_turned_quarter_turn_around_midpoint, depth=4)(testSeg), testSeg)
+
 """
 def sides_of_seg0_occupied_by_seg1(seg0, seg1): # works but uses set.
     seg0perp = seg_quarter_turn_around_midpoint(seg0)
@@ -325,19 +386,49 @@ def seg0_might_intersect_seg1(seg0, seg1): # works but uses set.
 def seg0_might_intersect_seg1(seg0, seg1):
     seg1perp = seg_turned_quarter_turn_around_midpoint(seg1)
     return ((seg_end_distance_to_point_order_trisign(seg1perp, seg0[0]) * seg_end_distance_to_point_order_trisign(seg1perp, seg0[1])) != 1) # return true if trisigns are anything other than (-1,-1) or (1,1).
+    
+def seg_length(seg):
+    return abs(seg[1] - seg[0])
+    
+def point_and_seg_to_missing_leg_lengths(point, seg):
+    return (abs(point-seg[0]), abs(point-seg[1]))
+    
+def point_might_be_on_seg(point, seg):
+    dist0, dist1 = point_and_seg_to_missing_leg_lengths(point, seg)
+    return abs(dist0+dist1-seg_length(seg)) < COMPLEX_EQUALITY_DISTANCE
+    
+"""
+def point_and_seg_to_lerping_component(point, seg):
+    distances = point_and_seg_to_missing_leg_lengths(point, seg)
+    
+"""
+
+def point_is_on_seg(point, seg):
+    distances = point_and_seg_to_missing_leg_lengths(point, seg)
+    if 0.0 in distances:
+        return True
+    predictedSegLength = sum(distances)
+    predictedPointT = predictedSegLength / distances[0]
+    predictedPoint = lerp(seg[0], seg[1], predictedPointT)
+    return (abs(predictedPoint - point) < COMPLEX_EQUALITY_DISTANCE)
         
     
     
 # print("extra assertions are turned off for segments_intersect because they are failing now.")
 
-def segments_intersect(seg0, seg1, extra_assertions=True):
+def segments_intersect(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
     #if seg0[0].real < 0:
     #    return "bad test answer"
         
     result = (seg0_might_intersect_seg1(seg0, seg1) and seg0_might_intersect_seg1(seg1, seg0))
     if extra_assertions:
+        assert_equal(result, segments_intersect(seg1, seg0, extra_assertions=False))
         if not result:
             assert segment_intersection(seg0, seg1, extra_assertions=False) is None
+        for testSegA, testSegB in [(seg0, seg1), (seg1, seg0)]:
+            for testPt in testSegA:
+                if point_is_on_seg(testPt, testSegB):
+                    assert result, (seg0, seg1, testSegA, testSegB, testPt)
     return result
 
 # tests for segments_intersect come later.
@@ -348,7 +439,7 @@ def cross_multiply(vec0, vec1):
     return vec0[0]*vec1[1] - vec0[1]*vec1[0]
 
 
-def segment_intersection(seg0, seg1, extra_assertions=True):
+def segment_intersection(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
     # seg0dir = seg0[1]-seg0[0]
     # seg1dir = seg1[1]-seg1[0]
     p = seg0[0]
@@ -370,12 +461,12 @@ def segment_intersection(seg0, seg1, extra_assertions=True):
     seg0intersection = p + t*r
     seg1intersection = q + u*s
     errorDistance = abs(seg0intersection - seg1intersection)
-    if errorDistance > 2.0**-64:
+    if errorDistance > COMPLEX_EQUALITY_DISTANCE:
         return None
     if t < 0 or t > 1 or u < 0 or u > 1:
         return None
-    if not (min([t - 0, 1 - t, u - 0, 1 - u]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
-        if extra_assertions:
+    if extra_assertions:
+        if not (min([abs(0 - t), abs(1 - t), abs(0 - u), abs(1 - u)]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
             if not segments_intersect(seg0, seg1, extra_assertions=False):
                 print("assertion in segment_intersection would fail for segments_intersect({}, {})".format(seg0, seg1))
                 assert False, (seg0, seg1, errorDistance, t, u)
@@ -399,7 +490,24 @@ assert basic_complex_fuzz_io(segment_intersection)((0+0j, 1+1j), (1+0j, 0+1j)) =
 
 
 
+def div_complex_by_i(val):
+    return complex(val.imag, -val.real)
 
+for testPt in (complex(*argPair) for argPair in multi_traverse([-100,-2,-1,0,1,2,100], count=2)):
+    assert_nearly_equal(div_complex_by_i(testPt), testPt/complex(0,1))
+    
+    
+    
+    
+def float_composition_magnitude(val):
+    return 0 if val == 0 else 1
+def float_composition_sign(val):
+    sign = -1 if val < 0.0 else 1 if val > 0.0 else None
+    if sign is None:
+        sign = -1 if str(val)[0] == "-" else 1
+    return sign
+def float_composition_positive(val):
+    return float_composition_sign(val) > 0
 
 """
 def get_complex_angle(c):
@@ -407,16 +515,32 @@ def get_complex_angle(c):
         c = c + ZERO_DIVISION_NUDGE
     return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag <= 0 else 0.0))
 """
+"""
+            # return UndefinedAtBoundary
+            if extra_assertions:
+                otherResult = "DEFAULT"
+                try:
+                    cconj = c.conjugate()
+                    otherResult = get_complex_angle(cconj, extra_assertions=False)
+                except UndefinedAtBoundaryError as uabe:
+                    raise UndefinedAtBoundaryError("can't get complex angle of point on seam, with extra assertions.")
+                assert False, "asymmetrical failure for c={}, cconj={}, (c==cconj)={}, otherResult={}. ".format(c, cconj, (c==cconj), otherResult)
+            else:
+                raise UndefinedAtBoundaryError("can't get complex angle of point on seam, without extra assertions.")
+
+"""
+"""
 def get_complex_angle(c):
     if c.imag == 0:
         if c.real > 0:
-            return 0
+            return 0.0
         elif c.real < 0:
             return math.pi
         else:
-            return UndefinedAtBoundary
-            # raise UndefinedAtBoundaryError("can't get complex angle of point on seam.")
+            assert c.real == 0
             
+            return 0.0
+                
     if c.real == 0:
         return (0.5*math.pi if c.imag >= 0 else 1.5*math.pi)
     if c.imag < 0:
@@ -425,6 +549,27 @@ def get_complex_angle(c):
         # return math.pi*0.5 + get_complex_angle(complex(c.imag, assure_positive(-c.real)
         return math.pi*0.5 + get_complex_angle(c/complex(0,1))
     return math.atan(c.imag/c.real)
+"""
+def get_complex_angle(c):
+    if c.imag == 0:
+        if c.real == 0:
+            raise UndefinedAtBoundaryError("origin has no angle!")
+        else:
+            if float_composition_positive(c.real):
+                return 0.0
+            else:
+                return math.pi
+    else:
+        if c.real == 0:
+            assert c.imag != 0
+            return (0.5*math.pi if float_composition_positive(c.imag) else 1.5*math.pi)
+        else:
+            if not float_composition_positive(c.imag):
+                return math.pi + get_complex_angle(complex(-c.real, assure_positive(-c.imag)))
+            if not float_composition_positive(c.real):
+                # return math.pi*0.5 + get_complex_angle(complex(c.imag, assure_positive(-c.real)
+                return math.pi*0.5 + get_complex_angle(div_complex_by_i(c))
+            return math.atan(c.imag/c.real)
     
 assert_nearly_equal(get_complex_angle(2+2j), math.pi/4.0)
 assert_nearly_equal(get_complex_angle(-2+2j), 3*math.pi/4.0)
@@ -439,8 +584,6 @@ def seg_is_valid(seg):
     return isinstance(seg, tuple) and all(isinstance(item, complex) for item in seg) and len(seg) == 2
 
 
-def seg_length(seg):
-    return abs(seg[1] - seg[0])
 
 """
 def polar_seg_is_valid(seg):
@@ -472,6 +615,8 @@ def seg_horizontal_line_intersection(seg, imag_pos=None):
     segImagMin, segImagMax = (min(segImags), max(segImags))
     if segImagMax < imag_pos or segImagMin > imag_pos:
         return None
+    if segImagMax == imag_pos or segImagMin == imag_pos:
+        raise UndefinedAtBoundaryError("end touch.")
     segRise = segImagMax - segImagMin
     interceptRise = imag_pos - segImagMin
     assert interceptRise >= 0.0
@@ -483,7 +628,7 @@ def seg_horizontal_line_intersection(seg, imag_pos=None):
     if 0.0 < interceptT < 1.0:
         return lerp_confined(seg[0], seg[1], interceptT if seg[0].imag<seg[1].imag else 1-interceptT)
     elif 0.0 <= interceptT <= 1.0:
-        raise UndefinedAtBoundaryError("end touch.")
+        raise UndefinedAtBoundaryError("unexpected end touch.")
     else:
         return None
 
@@ -546,18 +691,20 @@ def point_polar_to_rect(polar_pt):
 def point_rect_to_polar(rect_pt):
     # assert isinstance(rect_pt, complex)
     theta = get_complex_angle(rect_pt)
-    if theta is UndefinedAtBoundary:
-        return UndefinedAtBoundary
+    # if theta is UndefinedAtBoundary:
+    #     return UndefinedAtBoundary
     return complex(abs(rect_pt), theta)
     
     
 def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
     assert len(seg) == 2
     resultPair = [point_rect_to_polar(seg[i]) for i in (0, 1)]
+    """
     for i in (0,1):
         if resultPair[i] is UndefinedAtBoundary:
             # resultPair[i] = complex(seg[i].real, MODULUS_OVERLAP_NUDGE * (1 if resultPair[1-i].imag < math.pi else -1))
             raise UndefinedAtBoundaryError("seam intersection would be endpoint {} only. resultPair is {} for seg {}.".format(i, resultPair, seg))
+    """
     maxThetaIndex, maxTheta = find_max(imags(resultPair))
     seamIntersection = rect_seg_seam_intersection(seg)
     if seamIntersection is not None:
@@ -692,8 +839,25 @@ def polar_space_segment_intersection(seg0, seg1):
         return point_polar_to_rect(polarSectPts[0])
 """
 
+def conjugate_of_seg(seg):
+    return [pt.conjugate() for pt in seg]
+  
+"""
+def conjugate_of_something(val):
+    if val is not None:
+        return val.conjugate()
+    return val
+"""
+def pack_note_if(value, note, enabled):
+    if enabled:
+        return (value, note)
+    else:
+        return value
 
-def rect_seg_polar_space_intersection(seg0, seg1):
+
+print("warning: rect_seg_polar_space_intersection extra_assertions is not finished and currently changes output behavior.")
+
+def rect_seg_polar_space_intersection(seg0, seg1, force_symmetry=False, debug=False):
     """
     if any((pt.imag == 0 and abs(pt.real) > 0.01) for seg in (seg0, seg1) for pt in seg): # this is a dumb fix to visual bugs that won't always be necessary.
         result = rect_seg_polar_space_intersection(seg_multiplied_by_complex(seg0, MODULUS_OVERLAP_SCALE_NUDGE), seg_multiplied_by_complex(seg1, MODULUS_OVERLAP_SCALE_NUDGE))
@@ -701,17 +865,42 @@ def rect_seg_polar_space_intersection(seg0, seg1):
             result /= MODULUS_OVERLAP_SCALE_NUDGE
         return result
     """
+    if force_symmetry:
+        normalResult, normalResultNote = rect_seg_polar_space_intersection(seg0, seg1, force_symmetry=False, debug=True)
+        flippedResult, flippedResultNote = rect_seg_polar_space_intersection(conjugate_of_seg(seg0), conjugate_of_seg(seg1), force_symmetry=False, debug=True)
+        unflippedResult = (None if flippedResult is None else flippedResult.conjugate())
+        success = test_nearly_equal(normalResult, unflippedResult)
+        # assert success, ((normalResult, normalResultNote), (unflippedResult, flippedResultNote), seg0, seg1)
+        if success:
+            return pack_note_if(normalResult, "ok from rect_seg_polar_space_intersection with forced symmetry", debug)
+        else:
+            assert debug == False, "can't debug this now."
+            if isinstance(normalResultNote, tuple) or isinstance(flippedResultNote, tuple):
+                print("warning: rect_seg_polar_space_intersection: notes are {} {} {} {}.".format(normalResult, normalResultNote, flippedResult, flippedResultNote))
+            return None
+            
     try:
         psegFrags = [seg_rect_to_polar_positive_theta_fragments(currentSeg) for currentSeg in [seg0, seg1]]
-    except UndefinedAtBoundaryError:
-        return None
+    except UndefinedAtBoundaryError as uabe:
+        if debug:
+            return (None, ("UndefinedAtBoundaryError caught while defining psegFrags.", uabe))
+        else:
+            return None
+        
     for pseg0frag in psegFrags[0]:
         for pseg1frag in psegFrags[1]:
             pIntersection = segment_intersection(pseg0frag, pseg1frag)
             if pIntersection is not None:
                 assert isinstance(pIntersection, complex)
-                return point_polar_to_rect(pIntersection)
-    return None
+                result = point_polar_to_rect(pIntersection)
+                if debug:
+                    return (result, "ok from rect_seg_polar_space_intersection without forced symmetry")
+                else:
+                    return result
+    if debug:
+        return (None, "default case, failed to intersect, psegFrags={}.".format(psegFrags))
+    else:
+        return None
 
 #def rect_seg_polar_space_intersection(seg0, seg1):
     
