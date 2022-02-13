@@ -93,6 +93,10 @@ def assure_positive(val):
     return val
 
 
+def ensure_nonzero(val):
+    if val == 0.0:
+        return val + ZERO_DIVISION_NUDGE
+    return val
 
 
 
@@ -105,6 +109,15 @@ def reals(input_seq):
 def imags(input_seq):
     for item in input_seq:
         yield item.imag
+        
+def real_of(val):
+    return val.real
+    
+def imag_of(val):
+    return val.imag
+    
+def inv_abs_of(val):
+    return 1.0/max(ZERO_DIVISION_NUDGE, abs(val))
 
 def lerp(point0, point1, t):
     return (point0*(1.0-t)) + (point1*t)
@@ -501,11 +514,13 @@ for testPt in (complex(*argPair) for argPair in multi_traverse([-100,-2,-1,0,1,2
     
 def float_composition_magnitude(val):
     return 0 if val == 0 else 1
+    
 def float_composition_sign(val):
     sign = -1 if val < 0.0 else 1 if val > 0.0 else None
     if sign is None:
         sign = -1 if str(val)[0] == "-" else 1
     return sign
+    
 def float_composition_positive(val):
     return float_composition_sign(val) > 0
 
@@ -607,7 +622,7 @@ def complex_swap_complex_components(val):
     return complex(val.imag, val.real)
 
 def seg_swap_complex_components(val):
-    return [complex_swap_components(seg[i]) for i in (0,1)]
+    return [complex_swap_complex_components(seg[i]) for i in (0,1)]
     
 
 def seg_horizontal_line_intersection(seg, imag_pos=None):
@@ -715,6 +730,7 @@ def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
     assert seg_is_valid(result)
     return (result, seamIntersection)
     
+
 def seg_rect_to_polar_and_polar_space_seam_intersection(seg):
     pseg, rectSpaceSeamIntersection = seg_rect_to_polar_and_rect_space_seam_intersection(seg)
     polarSpaceSeamIntersection = rect_seg_seam_intersection(pseg) # pretend polar seg is rect to solve for polar space seg seam intersection.
@@ -729,6 +745,7 @@ def seg_rect_to_polar_and_polar_space_seam_intersection(seg):
         # if this case is ignored, the consequences are not obvious, but it might cause unecessary splits. This might be erring on the side of caution to reduce visual bugs.
         pass
     return (pseg, polarSpaceSeamIntersection)
+
 
 def seg_rect_to_polar_positive_theta_fragments(seg):
     # raise NotImplementedError("still has major bugs.")
@@ -759,6 +776,7 @@ def seg_rect_to_polar_positive_theta_fragments(seg):
     assert_nearly_equal(point_polar_to_rect(fragmentSegs[0][0]), seg[0])
     assert_nearly_equal(point_polar_to_rect(fragmentSegs[-1][1]), seg[1])
     return fragmentSegs
+
     
 def seg_polar_to_rect(seg):
     assert len(seg) == 2
