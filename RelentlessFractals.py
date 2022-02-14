@@ -16,8 +16,8 @@ from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_comp
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
-IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else 8)
+screen = pygame.display.set_mode((4096, 4096))
+IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else 16)
 
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
@@ -709,12 +709,12 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=4.0):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=2.0):
     print("do_buddhabrot started.")
     assert iter_limit is not None
     assert point_limit is not None
     # top(RallGincrvsleftBincivsleft)bottom(up)
-    output_name="bb_Rcross(origin_seed)Gcross(seed_escape)Bcross(origin_escape)_{}pos{}fov{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    output_name="bb_Rcross(origin_seed)Gcross(seed_escape)Bcross(origin_escape)_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
@@ -818,6 +818,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     print("do_buddhabrot done.")
 
 
+
+
+
+
+
+
 def quadrilateral_is_convex(points):
     assert len(points) == 4
     return segments_intersect((points[0], points[2]), (points[1], points[3]))
@@ -916,7 +922,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
     outputColorSummary = "top(RguestpaircmidptbothinsetGoneinsetBneitherinset)bottom(endpt)"
-    output_name="normal_{}_{}_{}pos{}fov{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, camera.view.center_pos, camera.view.size, iter_limit, camera.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
+    output_name="normal_{}_{}_{}pos{}fov{}esc{}itr{}biSuper{}count_{}_".format(buddhabrot_set_type, outputColorSummary, camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
     
     print("creating visitCountMatrix...")
     visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
