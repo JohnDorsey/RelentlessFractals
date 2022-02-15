@@ -437,7 +437,7 @@ def segments_intersect(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
     if extra_assertions:
         assert_equal(result, segments_intersect(seg1, seg0, extra_assertions=False))
         if not result:
-            assert segment_intersection(seg0, seg1, extra_assertions=False) is None
+            assert segment_intersection(seg0, seg1, extra_assertions=False) is None, (seg0, seg1)
         for testSegA, testSegB in [(seg0, seg1), (seg1, seg0)]:
             for testPt in testSegA:
                 if point_is_on_seg(testPt, testSegB):
@@ -481,8 +481,9 @@ def segment_intersection(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
     if extra_assertions:
         if not (min([abs(0 - t), abs(1 - t), abs(0 - u), abs(1 - u)]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
             if not segments_intersect(seg0, seg1, extra_assertions=False):
-                print("assertion in segment_intersection would fail for segments_intersect({}, {})".format(seg0, seg1))
-                assert False, (seg0, seg1, errorDistance, t, u)
+                print("assertion in segment_intersection would fail for segments_intersect({}, {}). errorDistance={}, t={}, u={}.".format(seg0, seg1, errorDistance, t, u))
+                print("additional information: seg0mightseg1={} seg1mightseg0={}.".format(seg0_might_intersect_seg1(seg0, seg1), seg0_might_intersect_seg1(seg1, seg0)))
+                # assert False, (seg0, seg1, errorDistance, t, u)
     return seg0intersection
     
 assert not basic_complex_fuzz_inputs_only(segments_intersect)((1+1j, 2+1j), (1+2j, 2+2j))
