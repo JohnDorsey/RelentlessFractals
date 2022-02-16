@@ -482,7 +482,7 @@ def segment_intersection(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
         if not (min([abs(0 - t), abs(1 - t), abs(0 - u), abs(1 - u)]) < LINESEG_INTERSECTION_ERROR_TOLERANCE): # for now, don't test non-crossing touches against segments_intersect. those tests are failing.
             if not segments_intersect(seg0, seg1, extra_assertions=False):
                 print("assertion in segment_intersection would fail for segments_intersect({}, {}). errorDistance={}, t={}, u={}.".format(seg0, seg1, errorDistance, t, u))
-                print("additional information: seg0mightseg1={} seg1mightseg0={}.".format(seg0_might_intersect_seg1(seg0, seg1), seg0_might_intersect_seg1(seg1, seg0)))
+                print("additional information: seg0mightseg1={} seg1mightseg0={} (both should be true according to the results of this method.).".format(seg0_might_intersect_seg1(seg0, seg1), seg0_might_intersect_seg1(seg1, seg0))) # this happens very rarely, like once in 200 million calls, and only for segments with very different lengths intersection very close to the end of each.
                 # assert False, (seg0, seg1, errorDistance, t, u)
     return seg0intersection
     
@@ -594,6 +594,16 @@ assert_nearly_equal(get_complex_angle(2-2j), 7*math.pi/4.0)
 
 assert_nearly_equal(get_complex_angle(1j), math.pi/2.0)
 assert_nearly_equal(get_complex_angle(-1j), 1.5*math.pi)
+
+
+def get_normalized(value):
+    if value == 0:
+        assert isinstance(value, complex)
+        # return get_normalized(complex(math.copysign(1,value.real), math.copysign(1,value.imag)))
+        print("get_normalized will return its default value. This shouldn't happen often.")
+        return complex(1,0)
+    return value / abs(value)
+# assert get_normalized(complex(0.0,-0.0)) = complex(0.0,-1.0)
 
 
 def seg_is_valid(seg):

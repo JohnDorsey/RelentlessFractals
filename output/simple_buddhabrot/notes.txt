@@ -1,3 +1,0 @@
-These all took 1 night at most.
-some 256x256 or 128x128 images are generated in several seconds if the iteration count is high.
-the sectsquaredbrot took the longest by far.

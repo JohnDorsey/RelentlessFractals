@@ -1,4 +1,12 @@
 import math
+CONST_2_OVER_PI = 2.0/math.pi
+CONST_510_OVER_PI = 510/math.pi
+
+
+def assert_single_arg_fun_obeys_dict(fun_to_test, qa_dict):
+    for i, pair in enumerate(qa_dict.items()):
+        testResult = fun_to_test(pair[0])
+        assert testResult == pair[1], "failure for test {}, pair={}, testResult={}.".format(i, pair, testResult)
     
 """
 def automatic_color(value):
@@ -17,11 +25,19 @@ def _old_atan_squish_unsigned(input_value, max_output):
     return a*max_output
 """
 
-def atan_squish_unsigned_uniform(input_value, max_output):
-    trueScale = max_output*2.0/math.pi
+def atan_squish_to_float_unsigned_uniform(input_value, max_output):
+    trueScale = max_output*CONST_2_OVER_PI
     return math.atan(input_value / trueScale) * trueScale
+    
 assert 9.98 < atan_squish_unsigned_uniform(10.0, 256) < 9.99
 assert 229.6 < atan_squish_unsigned_uniform(999.0, 256) < 229.7
+
+
+def atan_squish_to_byteint_unsigned_uniform_nearest(input_value):
+    return round(math.atan(input_value/CONST_510_OVER_PI)*CONST_510_OVER_PI)
+    
+assert_single_arg_fun_obeys_dict(atan_squish_to_byteint_unsigned_uniform_nearest, dict([(i,i) for i in range(0,32)]+[(64,61), (4096,249), (32768,254), (65536,255), (256*32768*32768*1048576*16*16,255)]))
+
     
 """
 def squish_color(input_color):

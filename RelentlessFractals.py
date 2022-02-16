@@ -11,16 +11,17 @@ import pygame
 from ColorTools import atan_squish_unsigned_uniform
 
 import SegmentGeometry
-from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter
+from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized
 
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
 
 
 
+
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((512, 512))
+screen = pygame.display.set_mode((1024, 1024))
 IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else 32)
 
 
@@ -30,9 +31,10 @@ assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are y
 
 import PygameDashboard
 
-def this_module_exec(string):
+def THIS_MODULE_EXEC(string):
     exec(string)
-# PygameDashboard.parent_module_exec = this_module_exec
+
+CAPTION_RATE_LIMITER = PygameDashboard.SimpleRateLimiter(1.0)
 
 
 
@@ -155,9 +157,7 @@ def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
     try:
         for y in range(ySize):
             for x in range(xSize):
-                color = tuple(round(atan_squish_unsigned_uniform(colorDataGetter(x, y, chi), 255)) for chi in range(cSize))
-                # assert max(color) < 256
-                # assert min(color) >= 0
+                color = tuple(atan_squish_to_byteint_unsigned_uniform_nearest(colorDataGetter(x, y, chi)) for chi in range(cSize))
                 dest_surface.set_at((x, y), color)
     except IndexError as ie:
         print("index error when (x, y)=({}, {}): {}.".format(x, y, ie))
@@ -204,15 +204,7 @@ def higher_range(descriptions, iteration_order=None):
             yield item
             
 
-"""
-def capture_exits(input_fun):
-    def modifiedFun(*args, **kwargs):
-        try:
-            input_fun(*args, **kwargs)
-        except KeyboardInterrupt:
-            print("KeyboardInterrupt intercepted.")
-            return
-    return modifiedFun"""
+
             
             
 def gen_track_previous(input_seq):
@@ -220,6 +212,7 @@ def gen_track_previous(input_seq):
     for item in input_seq:
         yield (previousItem, item)
         previousItem = item
+        
         
 def gen_track_previous_full(input_seq):
     try:
@@ -318,22 +311,7 @@ def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
         
         
         
-"""
-def journey_to_itercount(journey, iter_limit, escape_radius): #outdated.
-    for i, point in enumerate(journey):
-        if i >= iter_limit:
-            return -1
-        if abs(point) > escape_radius:
-            return i
-    assert False, "incomplete journey."
-"""
-    
-"""
-def c_and_journey_fun_to_itercount(journey_fun, c, iter_limit, escape_radius): #outdated.
-    journey = journey_fun(c)
-    itercount = journey_to_itercount(journey, iter_limit, escape_radius)
-    return itercount
-        """
+
         
 
 def constrain_journey(journey, iter_limit, escape_radius):
@@ -392,6 +370,7 @@ def gen_path_intersections_with_seg(journey, reference_seg, intersection_fun=Non
         intersection = intersection_fun(currentSeg, reference_seg)
         if intersection is not None:
             yield intersection
+
 
 def gen_path_zipped_multi_seg_intersections(journey, reference_segs, intersection_fun=None):
     for currentSeg in gen_track_previous_full(journey):
@@ -467,40 +446,18 @@ def get_seeds(screen_size: tuple, camera_pos: complex, view_size: complex, cente
         for x in range(screen_size[0]):
             yield (x, y, screen_to_complex((x,y), screen_size, camera_pos, view_size, centered_sample=centered_sample))
 """
-            
+           
+           
 def parallel_div_complex_by_floats(view_size, screen_size):
     return complex(view_size.real/screen_size[0], view_size.imag/screen_size[1])
+    
     
 def parallel_mul_complex_by_floats(complex_val, float_pair):
     return complex(complex_val.real * float_pair[0], complex_val.imag * float_pair[1])
     
+    
 def parallel_div_complex_by_complex(val0, val1):
     return complex(val0.real/val1.real, val0.imag/val1.imag)
-    
-"""
-def calc_camera_properties(screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
-    assert centered_sample is not None, "this arg might not even be needed."
-    assert centered_sample == False, "not implemented yet."
-    camera_corner_pos = camera_pos - (view_size/2.0)
-    pixel_size = parallel_div_complex_by_ints(view_size, screen_size)
-    return (camera_corner_pos, pixel_size)
-    
-def screen_to_complex(screen_coords: tuple, screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
-    assert centered_sample is not None
-    camera_corner_pos, pixel_size = calc_camera_properties(screen_size, camera_pos, view_size, centered_sample=centered_sample)
-    return camera_corner_pos + parallel_mul_complex_by_ints(pixel_size, screen_coords) + pixel_size*0.5*centered_sample
-    
-def complex_to_screen(complex_coord, screen_size, camera_pos, view_size, centered_sample=None):
-    assert centered_sample is not None
-    camera_corner_pos, pixel_size = calc_camera_properties(screen_size, camera_pos, view_size, centered_sample=centered_sample)
-    posRelToCorner = complex_coord - camera_corner_pos
-    y = posRelToCorner.imag/pixel_size.imag
-    x = posRelToCorner.real/pixel_size.real
-    assert centered_sample==False, "not implemented yet."
-    return (int(x), int(y))
-    
-assert complex_to_screen(screen_to_complex((56,78), (123,456), 8+8j, 4+4j, centered_sample=False), (123,456), 8+8j, 4+4j, centered_sample=False) == (56, 78)
-"""
 
 
     
@@ -552,22 +509,7 @@ def test_abberation(text, scale, iterLimit):
         #    color,
         #)
     
-"""
-def modify_visit_count_matrix(visit_count_matrix, input_seq, camera_pos, view_size, count_scale):
-    for i, item in input_seq:
-        complexPoint, redInc, greenInc, blueInc = item
-        screenPixelX, screenPixelY = complex_to_screen(point, screen.get_size(), camera_pos, view_size)
-        try:
-            currentCell = visit_count_matrix[screenPixelY][screenPixelX]
-            if redInc:
-                currentCell[0] += count_scale
-            if greenInc:
-                currentCell[1] += count_scale
-            if blueInc:
-                currentCell[2] += count_scale
-        except IndexError as ie:
-            pass
-"""
+
 
 def scaled_size(input_size, input_scale):
     assert len(input_size) == 2
@@ -594,6 +536,7 @@ class View:
         return self.get_sub_view_corner(subdivisions_pair, (sub_view_coord[0] + 0.5, sub_view_coord[1] + 0.5))
     """
     
+
 def bump(data, amount):
     return [item+amount for item in data]
     
@@ -677,13 +620,7 @@ class Echo:
     def previous(self):
         return self.history[-2]
 
-"""
 
-    
-
-def scaled_vec(vec0, scale):
-    return [item*scale for item in vec0]
-"""
     
     
 def vec_add_vec_masked(vec0, vec1, mask):
@@ -696,7 +633,9 @@ def vec_add_scalar_masked(vec0, input_scalar, mask):
     for i in range(len(vec0)):
         if mask[i]:
             vec0[i] += input_scalar
-# def vec_add_scalar_at(vec0, input_sca
+            
+
+
 
 """
 def gen_drop_first_if_equals(input_seq, value):
@@ -712,13 +651,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     assert iter_limit is not None
     assert point_limit is not None
     # top(RallGincrvsleftBincivsleft)bottom(up)
-    output_name="bb_rectcross_polarcross_rectcross(R(origin_seed)G(seed_escape)B(origin_escape))_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="bb_polarcross(RseedouterspokeGseedhorizlegBseedvertleg)_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-    captionRateLimiter = PygameDashboard.SimpleRateLimiter(1.0)
     
     visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
     def pointToVisitCountMatrixCell(point):
@@ -764,7 +702,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
                 specializedDraw()
                 save_screenshot_as(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.seed_settings.grid_size[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
             else:
-                if captionRateLimiter.get_judgement():
+                if CAPTION_RATE_LIMITER.get_judgement():
                     pygame.display.set_caption("y={}".format(y))
                 
         journey = journeyFun(seed)
@@ -775,17 +713,18 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            # journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
             
-            zjfiJourneyToFollow = doubleJourneySelfIntersections # skip first item here if necessary.
+            zjfiJourneyToFollow = constrainedJourney # skip first item here if necessary.
             zjfiJourneyToAnalyze = constrainedJourney
-            zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]
-            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"
+            # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]
+            zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
+            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"
             
             limitedVisitPointGen = itertools.islice(zippedJourneyFoundationIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
@@ -1050,12 +989,12 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 print("done testing.")
 
 #test_abberation([0], 0, 16384)
-do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=64, point_limit=64, count_scale=4)
+do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=2)
 #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
 #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
 
-PygameDashboard.stall_pygame(preferred_exec=this_module_exec)
+PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
 
 

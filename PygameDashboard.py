@@ -37,7 +37,15 @@ def whichever_exec(command_string, preferred_exec=None):
     execToUse(command_string)
 
 
-    
+"""
+def capture_exits(input_fun):
+    def modifiedFun(*args, **kwargs):
+        try:
+            input_fun(*args, **kwargs)
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt intercepted.")
+            return
+    return modifiedFun"""
    
    
 def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
