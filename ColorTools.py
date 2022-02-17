@@ -29,8 +29,8 @@ def atan_squish_to_float_unsigned_uniform(input_value, max_output):
     trueScale = max_output*CONST_2_OVER_PI
     return math.atan(input_value / trueScale) * trueScale
     
-assert 9.98 < atan_squish_unsigned_uniform(10.0, 256) < 9.99
-assert 229.6 < atan_squish_unsigned_uniform(999.0, 256) < 229.7
+assert 9.98 < atan_squish_to_float_unsigned_uniform(10.0, 256) < 9.99
+assert 229.6 < atan_squish_to_float_unsigned_uniform(999.0, 256) < 229.7
 
 
 def atan_squish_to_byteint_unsigned_uniform_nearest(input_value):

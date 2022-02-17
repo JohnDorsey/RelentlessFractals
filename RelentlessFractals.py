@@ -8,25 +8,29 @@ import copy
 
 import pygame
 
-from ColorTools import atan_squish_unsigned_uniform
+from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
 import SegmentGeometry
 from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized
 
 
-COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-
+testZip = zip("ab","cd")
+izip = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
+testZip2 = izip("ab","cd")
+assert (iter(testZip2) is iter(testZip2)) and (not isinstance(testZip2, list)), "can't izip?"
+del testZip, testZip2
 
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
-IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else 32)
-
+screen = pygame.display.set_mode((128, 128))
+IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 256 else 32))
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
+
+COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
 
 
 import PygameDashboard
@@ -35,6 +39,12 @@ def THIS_MODULE_EXEC(string):
     exec(string)
 
 CAPTION_RATE_LIMITER = PygameDashboard.SimpleRateLimiter(1.0)
+
+
+
+
+
+
 
 
 
@@ -277,17 +287,17 @@ def fill_data(data, fill_value):
 
 
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
-    z = 0.0
+    z = 0+0j
     for i in range(iter_limit):
         if abs(z) >= escape_radius:
             return i
-        z = z**2.0 + c
+        z = z**2 + c
     return None
 
 
 def c_to_mandel_journey(c):
     z = 0+0j
-    for i in itertools.count(0):
+    while True:
         yield z
         z = z**2 + c
         
@@ -301,12 +311,15 @@ def c_must_be_in_mandelbrot(c):
         
         
 def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
-    z = 0
+    z = 0+0j
     yield z
-    for i, abber in itertools.zip_longest(itertools.count(0), abberation_seq):
+    
+    for abber in abberation_seq:
         z = z**2 + c
-        if abber is not None:
-            z += abber
+        z += abber
+        yield z
+    while True:
+        z = z**2 + c
         yield z
         
         
@@ -353,17 +366,21 @@ def get_sum_of_inverse_abs_vals(constrained_journey):
     
 
 
-
-    
-def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
+def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None):
     knownSegs = []
-    for currentSeg in gen_track_previous_full(journey):
-        knownSegs.append(currentSeg)
-        for oldKnownSeg in knownSegs[:-1]: #don't include the last one just appended.
+    for currentSeg in seg_seq:
+        for oldKnownSeg in knownSegs:
             intersection = intersection_fun(currentSeg, oldKnownSeg)
             if intersection is not None:
                 yield intersection
+        knownSegs.append(currentSeg)
+    
+def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
+    return gen_seg_seq_self_intersections(gen_track_previous_full(journey), intersection_fun=intersection_fun)
                     
+def gen_ladder_rung_self_intersections(journey0, journey1, intersection_fun=None):
+    return gen_seg_seq_self_intersections(izip(journey0, journey1), intersection_fun=intersection_fun)
+
                     
 def gen_path_intersections_with_seg(journey, reference_seg, intersection_fun=None):
     for currentSeg in gen_track_previous_full(journey):
@@ -651,7 +668,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     assert iter_limit is not None
     assert point_limit is not None
     # top(RallGincrvsleftBincivsleft)bottom(up)
-    output_name="bb_polarcross(RseedouterspokeGseedhorizlegBseedvertleg)_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
+    output_name="bb_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
@@ -713,28 +731,30 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            # journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
             
+            """
             zjfiJourneyToFollow = constrainedJourney # skip first item here if necessary.
             zjfiJourneyToAnalyze = constrainedJourney
             # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]
-            zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
+            zjfiFoundationSegsToUse = "must be specified!" [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"
+            """
             
-            limitedVisitPointGen = itertools.islice(zippedJourneyFoundationIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(journeySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
         
         for ii, currentItem in enumerate(visitPointListEcho.current):
-            drawZippedPointsToChannels(currentItem)
+            # drawZippedPointsToChannels(currentItem)
             # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            # drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
+            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
         
         # differential mode:
         """
@@ -942,7 +962,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
                 
                 
 def panel_brot_draw_close_encounters():
-    pass
+    raise NotImplementedError("?")
 
 
 def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=None, visit_count_matrix=None, count_scale=None, centered_sample=None):
@@ -983,32 +1003,25 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 
 
+def main():
+
+    #test_abberation([0], 0, 16384)
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=1)
+    #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
+
+    #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
+
+    PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
+
+
+
+
 
 
                 
 print("done testing.")
 
-#test_abberation([0], 0, 16384)
-do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=2)
-#measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
-
-#test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
-
-PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
+if __name__ == "__main__":
+    main()
 
 
-
-
-"""
-def solve_to_seq(start_args, rule_fun, termination_fun, iter_limit):
-    state = 
-    for i in range(iter_limit):
-"""
-"""
-try:
-    screenshot(name_prefix="screen_backup_")
-    #if pygame.display.get_active():
-    #    pygame.display.quit()
-except Exception as e:
-    raise e
-    """
