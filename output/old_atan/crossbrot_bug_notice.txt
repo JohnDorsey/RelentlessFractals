@@ -1,0 +1,1 @@
+All path self intersection images generated before (17 Feb 2022) allow segments to intersect with the one before them, causing every point in the journey to also be included in the journey's self intersection sequence.

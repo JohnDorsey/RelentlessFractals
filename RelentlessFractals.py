@@ -24,8 +24,8 @@ del testZip, testZip2
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((128, 128))
-IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 256 else 32))
+screen = pygame.display.set_mode((1024, 1024))
+IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 512 else 32))
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
@@ -62,16 +62,16 @@ def shape_of(data_to_test):
     return result
     
     
-def measure_time_nicknamed(nickname): # copied directly from GeodeFractals/photo.py.
+def measure_time_nicknamed(nickname, ndigits=2): # copied directly from GeodeFractals/photo.py.
     if not isinstance(nickname, str):
         raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
     def measure_time_nicknamed_inner(input_fun):
         def measure_time_nicknamed_inner_inner(*args, **kwargs):
-            startTime=time.time()
+            startTime = time.monotonic()
             result = input_fun(*args, **kwargs)
-            endTime=time.time()
+            endTime = time.monotonic()
             totalTime = endTime-startTime
-            print("{} took {} s ({} m)({} h).".format(nickname, totalTime, int(totalTime/60), int(totalTime/60/60)))
+            print("{} took {} s ({} m)({} h).".format(nickname, totalTime, round(totalTime/60.0, ndigits=ndigits), round(totalTime/60.0/60.0, ndigits=ndigits)))
             return result
         return measure_time_nicknamed_inner_inner
     return measure_time_nicknamed_inner
@@ -233,6 +233,9 @@ def gen_track_previous_full(input_seq):
         yield (previousItem, currentItem)
         previousItem = currentItem
         
+
+# def gen_track_recent(input_seq
+        
         
 def gen_track_previous_tuple_flatly(input_seq):
     previousTuple = None
@@ -337,6 +340,10 @@ def constrain_journey(journey, iter_limit, escape_radius):
     assert False, "incomplete journey."
 
 
+
+
+
+
 def get_sum_of_inverse_segment_lengths(constrained_journey):
     result = 0.0
     for previousPoint, point in gen_track_previous(constrained_journey):
@@ -361,26 +368,54 @@ def get_sum_of_inverse_abs_vals(constrained_journey):
     return result
     
     
-    
+def count_float_local_minima(input_seq): # does not recognize any minimum with more than one identical value in a row.
+    result = 0
+    history = [None, None]
+    for item in input_seq:
+        if None not in history:
+            if history[1] < history[0] and history[1] < item:
+                result += 1
+        history[0] = history[1]
+        history[1] = item
+    return result
+                
+                
 
     
 
+    
 
-def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None):
+
+def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None):
     knownSegs = []
     for currentSeg in seg_seq:
-        for oldKnownSeg in knownSegs:
+        knownSegs.append(currentSeg)
+        for oldKnownSeg in knownSegs[:-1-gap_size]:
             intersection = intersection_fun(currentSeg, oldKnownSeg)
             if intersection is not None:
                 yield intersection
-        knownSegs.append(currentSeg)
     
 def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
-    return gen_seg_seq_self_intersections(gen_track_previous_full(journey), intersection_fun=intersection_fun)
-                    
+    return gen_seg_seq_self_intersections(gen_track_previous_full(journey), intersection_fun=intersection_fun, gap_size=1)
+    
+"""
+def gen_path_self_non_intersections(journey, intersection_fun=None): # code duplication, but there's no other fast way.
+    knownSegs = []
+    for currentSeg in gen_track_previous_full(journey):
+        knownSegs.append(currentSeg)
+        for oldKnownSeg in knownSegs[:-2]:
+            if intersection_fun(currentSeg, oldKnownSeg) is not None:
+                break
+        else:
+            yield currentSeg[1]
+"""
+
+
+# disabled because it is probably better to zip them elsewhere to avoid confusion.
+"""
 def gen_ladder_rung_self_intersections(journey0, journey1, intersection_fun=None):
     return gen_seg_seq_self_intersections(izip(journey0, journey1), intersection_fun=intersection_fun)
-
+"""
                     
 def gen_path_intersections_with_seg(journey, reference_seg, intersection_fun=None):
     for currentSeg in gen_track_previous_full(journey):
@@ -405,7 +440,7 @@ def gen_path_pair_mutual_intersections(journies, intersection_fun=None):
 
 def gen_record_breakers(input_seq, score_fun=None):
     try:
-        first, inputGen = SegmentGeometry.peek_first_and_iter(input_seq)
+        first, inputGen = peek_first_and_iter(input_seq)
     except IndexError:
         return
     record = score_fun(first)
@@ -419,7 +454,7 @@ def gen_record_breakers(input_seq, score_fun=None):
 
 def gen_flag_multi_record_breakers(input_seq, score_funs=None):
     try:
-        first, inputGen = SegmentGeometry.peek_first_and_iter(input_seq)
+        first, inputGen = peek_first_and_iter(input_seq)
     except IndexError:
         return
     records = [scoreFun(first) for scoreFun in score_funs]
@@ -444,27 +479,42 @@ def gen_flag_multi_record_breakers(input_seq, score_funs=None):
         yield currentResult
 """
     
-def count_float_local_minima(input_seq): # does not recognize any minimum with more than one identical value in a row.
-    result = 0
-    history = [None, None]
-    for item in input_seq:
-        if None not in history:
-            if history[1] < history[0] and history[1] < item:
-                result += 1
-        history[0] = history[1]
-        history[1] = item
-    return result
-                
-                
-"""
-def get_seeds(screen_size: tuple, camera_pos: complex, view_size: complex, centered_sample=None):
-    assert centered_sample is not None
-    for y in range(screen_size[1]):
-        for x in range(screen_size[0]):
-            yield (x, y, screen_to_complex((x,y), screen_size, camera_pos, view_size, centered_sample=centered_sample))
-"""
+def gen_track_sum(input_seq):
+    try:
+        sumSoFar, inputGen = peek_first_and_iter(input_seq)
+    except IndexError:
+        return
+    yield (sumSoFar, sumSoFar)
+    for item in inputGen:
+        sumSoFar += item
+        yield (sumSoFar, item)
+assert_equal(list(gen_track_sum([1,2,3,4.5])), [(1,1),(3,2),(6,3),(10.5,4.5)])
+    
+    
+def gen_track_mean(input_seq):
+    for denominator, (sumSoFar, item) in enumerate(gen_track_sum(input_seq), 1):
+        yield (sumSoFar/float(denominator), item)
+assert_equal(list(gen_track_mean([1,2,3,2])), [(1.0,1),(1.5,2),(2.0,3),(2.0,2)])
+assert_equal(list(gen_track_mean([complex(4,40),complex(0,0)])), [(complex(4,40), complex(4,40)), (complex(2,20), complex(0,0))])
+           
+
+def gen_track_decaying_mean(input_seq, feedback=None):
+    feedbackCompliment = 1.0-feedback
+    
+    try:
+        first, inputGen = peek_first_and_iter(input_seq)
+    except IndexError:
+        return
+    memoryValue = feedbackCompliment*first
+    yield (memoryValue, first)
+    for item in inputGen:
+        memoryValue = (feedback*memoryValue) + (feedbackCompliment*item)
+        yield (memoryValue, item)
+
            
            
+           
+
 def parallel_div_complex_by_floats(view_size, screen_size):
     return complex(view_size.real/screen_size[0], view_size.imag/screen_size[1])
     
@@ -663,13 +713,13 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=2.0):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None):
     print("do_buddhabrot started.")
-    assert iter_limit is not None
-    assert point_limit is not None
+    assert None not in (iter_limit, point_limit, escape_radius)
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
-    output_name="bb_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
+    output_name="test_bb_polarcross_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     
     journeyFun = c_to_mandel_journey
@@ -731,8 +781,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
+            # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
+            # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            
+            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
@@ -743,10 +797,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             zjfiJourneyToAnalyze = constrainedJourney
             # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]
             zjfiFoundationSegsToUse = "must be specified!" [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
-            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"
+            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"; assert escape_radius==2.0
             """
             
-            limitedVisitPointGen = itertools.islice(journeySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(doubleJourneySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -1006,7 +1060,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 def main():
 
     #test_abberation([0], 0, 16384)
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=1)
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=64, point_limit=64, count_scale=4, escape_radius=4.0)
     #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
     #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
