@@ -156,6 +156,8 @@ def find_left_min(data):
         if item[1] < record[1]:
             record = item
     return record
+assert find_left_min([-5,-7,-2,-3,-4,5,4,3,2,1]) == (1, -7)
+assert find_left_min([9,8,7,6,5,6,7,8,9]) == (4, 5)
     
 def find_left_max(data):
     record, itemGen = peek_first_and_iter(enumerate(data))
@@ -211,6 +213,7 @@ def gen_chunks_as_lists(data, length):
 
 
 def compose_single_arg_function(func, depth=None):
+    raise NotImplementedError("needs testing!")
     assert depth >= 0
     def compose_single_arg_function_inner(*args, **kwargs):
         assert len(args) == 1, "that wasn't the deal. must be single arg."
@@ -219,6 +222,7 @@ def compose_single_arg_function(func, depth=None):
             result = func(result, **kwargs)
         return result
     return compose_single_arg_function_inner
+
 """
 def compose_functions(function_list):
     assert len(function_list) > 0

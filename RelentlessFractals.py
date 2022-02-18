@@ -16,13 +16,14 @@ import itertools
 import collections
 import copy
 import random
+import gc
 
 import pygame
 
 from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
 import SegmentGeometry
-from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized, find_left_min
+from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized, find_left_min, lerp
 
 
 testZip = zip("ab","cd")
@@ -33,18 +34,6 @@ del testZip, testZip2
 
 
 
-pygame.init()
-pygame.display.init()
-screen = pygame.display.set_mode((512, 512))
-IMAGE_BAND_COUNT = (
-    4 if screen.get_size()[1] <= 128 else (
-    16 if screen.get_size()[1] <= 512 else
-    32))
-
-assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
-assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
-
-COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
 
 
 import PygameDashboard
@@ -135,12 +124,12 @@ def enforce_tuple_length(input_tuple, length, default=None):
         return input_tuple + tuple(default for i in range(length-len(input_tuple)))
     else:
         return input_tuple[:length]
+
+
     
     
     
-    
-    
-    
+
 
 @measure_time_nicknamed("save_surface_as")
 def save_surface_as(surface, name_prefix="", name=None):
@@ -149,11 +138,11 @@ def save_surface_as(surface, name_prefix="", name=None):
     usedName = name_prefix + name
     print("saving file {}.".format(usedName))
     pygame.image.save(surface, usedName)
+    measure_time_nicknamed("garbage collection")(gc.collect)()
+    #print("{} unreachable objects.".format())
 
 
-def save_screenshot_as(*args, **kwargs):
-    pygame.display.flip()
-    save_surface_as(screen, *args, **kwargs)
+
     
     
 
@@ -161,10 +150,10 @@ def save_screenshot_as(*args, **kwargs):
 
 
 
-assert COLOR_SETTINGS_SUMMARY_STR == "color(atan)"
 @measure_time_nicknamed("draw_squished_ints_to_surface")
 def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
     # maybe this method shouldn't exist. Maybe image creation should happen in another process, like photo.py in GeodeFractals.
+    assert COLOR_SETTINGS_SUMMARY_STR == "color(atan)"
     
     if access_order == "cyx":
         colorDataGetter = lambda argX, argY, argC: channels[argC][argY][argX]
@@ -188,17 +177,7 @@ def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
         exit(1)
             
 
-def draw_squished_ints_to_screen(*args, **kwargs):
-    draw_squished_ints_to_surface(screen, *args, **kwargs)
-    pygame.display.flip()
             
-
-"""
-def range2d(width, height):
-    for y in range(height):
-        for x in range(width):
-            yield x, y
-"""
             
 def higher_range_linear(descriptions):
             
@@ -296,9 +275,11 @@ def fill_data(data, fill_value):
 
 
 
-
-
-
+def gen_assuredly_ascending(input_seq):
+    for previousItem, item in gen_track_previous(input_seq):
+        if previousItem is not None:
+            assert previousItem <= item , "could not assure ascending! not {} <= {}.".format(repr(previousItem),repr(item))
+        yield item
 
 
 
@@ -530,6 +511,23 @@ def gen_path_seg_lerps(input_seq, t=None):
     assert 0.0 <= t <= 1.0
     for pointA, pointB in gen_track_previous_full(input_seq):
         yield lerp(pointA, pointB, t)
+        
+"""
+def gen_path_seg_multi_lerps(input_seq, t_seq):
+    # assert isinstance(t_list, (tuple, list))
+    return itertools.chain.from_iterable(izip(gen_path_seg_lerps(input_seq, t) for t in t_seq))
+"""
+
+def gen_path_seg_multi_lerps(input_seq, t_list=None): # could easily be faster with a multi lerp method.
+    assert isinstance(t_list, (tuple, list))
+    # assert all(0.0 <= t <= 1.0 for t in t_list)
+    for pointA, pointB in gen_track_previous_full(input_seq):
+        for t in t_list:
+            yield lerp(pointA, pointB, t)
+            
+# gen_path_seg_multi_lerps_12x = SegmentGeometry.compose_single_arg_function(gen_path_seg_multi_lerps, depth=12)
+# gen_path_seg_quarterbevel_12x = (lambda input_seq: gen_path_seg_multi_lerps(input_seq, t_list=[0.25, 0.75]))
+    
 """
 def gen_path_seg_midpoints(input_seq):
     return gen_path_seg_lerps(input_seq, t=0.5)
@@ -544,6 +542,7 @@ def make_list_copier_from_list_mutator(input_mutator):
         return workingList
     return inner
 
+
 def sort_with_greedy_neighbor_distance_minimizer(input_list, distance_fun=None):
     for i in range(len(input_list)-1):
         bestNextItemRelIndex, bestNextItem = find_left_min(distance_fun(input_list[i], item) for item in input_list[i+1:])
@@ -553,14 +552,27 @@ def sort_with_greedy_neighbor_distance_minimizer(input_list, distance_fun=None):
         if bestNextItemIndex != i + 1:
             input_list[i + 1], input_list[bestNextItemIndex] = (input_list[bestNextItemIndex], input_list[i+1])
             
+            
 def sort_to_greedy_shortest_path_order(input_list):
     return sort_with_greedy_neighbor_distance_minimizer(input_list, (lambda testValA, testValB: abs(testValA - testValB)))
+    
+testList = [complex(1,1),complex(3,1),complex(2,5),complex(2,2)]
+sort_to_greedy_shortest_path_order(testList)
+assert_equal(testList, [complex(1,1),complex(2,2),complex(3,1),complex(2,5)])
+del testList
+
 
 def sort_to_greedy_longest_path_order(input_list):
     return sort_with_greedy_neighbor_distance_minimizer(input_list, (lambda testValA, testValB: -abs(testValA - testValB)))
-
+    
+testList = [complex(1,1),complex(3,1),complex(2,5),complex(2,2)]
+sort_to_greedy_longest_path_order(testList)
+assert_equal(testList, [complex(1,1),complex(2,5),complex(3,1),complex(2,2)])
+del testList
+    
     
 sorted_to_greedy_shortest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_shortest_path_order)
+
 sorted_to_greedy_longest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_longest_path_order)
 
 
@@ -784,24 +796,23 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
-    output_name="bb_greedyLongOrder_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="test_bb_8xquarterbevel_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
     journeyFun = c_to_mandel_journey
+    
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-    
-    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
-    def pointToVisitCountMatrixCell(point):
-        return camera.screen_settings.complex_to_item(visitCountMatrix, point, centered=False)
     
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
     pixelWidth = camera.screen_settings.cell_size.real
     assert pixelWidth < 0.1, "is the screen really that small in resolution?"
     
-    visitPointListEcho = Echo(length=2)
+    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
+    def pointToVisitCountMatrixCell(point):
+        return camera.screen_settings.complex_to_item(visitCountMatrix, point, centered=False)
     
     def drawPointUsingMask(mainPoint=None, mask=None):
         drawingStats["dotCount"] += 1
@@ -825,6 +836,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     def drawPointUsingComparison(mainPoint=None, comparisonPoint=None):
         drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
     
+    visitPointListEcho = Echo(length=2)
+    
     cellDescriptionGen = camera.seed_settings.iter_cell_descriptions(centered=False)
     
     print("done initializing.")
@@ -832,12 +845,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     for i, (x, y, seed) in enumerate(cellDescriptionGen):
         
         if (x==0):
-            if (y%1024 == 0 or y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
+            if (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
                 specializedDraw()
                 save_screenshot_as(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.seed_settings.grid_size[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
             else:
                 if CAPTION_RATE_LIMITER.get_judgement():
-                    pygame.display.set_caption("y={}".format(y))
+                    SET_LIVE_STATUS("y={}".format(y))
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in constrain_journey(journey, iter_limit, escape_radius)]
@@ -847,6 +860,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
+            quarterbeveledJourney = gen_path_seg_quarterbevel_12x(constrainedJourney)
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
@@ -859,8 +873,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
             
             # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
-            greedyLongPathJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_longest_path_order(greedyLongPathJourney)
-            greedyLongPathJourneySelfIntersections = gen_path_self_intersections(greedyLongPathJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            # greedyLongPathJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_longest_path_order(greedyLongPathJourney)
+            # greedyLongPathJourneySelfIntersections = gen_path_self_intersections(greedyLongPathJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
             """
             zjfiJourneyToFollow = constrainedJourney # skip first item here if necessary.
@@ -870,7 +884,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"; assert escape_radius==2.0
             """
             
-            limitedVisitPointGen = itertools.islice(greedyLongPathJourneySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(quarterbeveledJourney, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -1127,15 +1141,50 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 
 
+
+
+pygame.init()
+pygame.display.init()
+screen = pygame.display.set_mode((256, 256))
+IMAGE_BAND_COUNT = (
+    4 if screen.get_size()[1] <= 128 else (
+    16 if screen.get_size()[1] <= 512 else
+    32))
+
+assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
+assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
+
+COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
+
+def SET_LIVE_STATUS(status_text):
+    try:
+        pygame.display.set_caption(status_text)
+    except Exception as e:
+        print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
+
+def save_screenshot_as(*args, **kwargs):
+    pygame.display.flip()
+    save_surface_as(screen, *args, **kwargs)
+    
+def draw_squished_ints_to_screen(*args, **kwargs):
+    draw_squished_ints_to_surface(screen, *args, **kwargs)
+    pygame.display.flip()
+
+
+
+
+
+
+
 def main():
 
     #test_abberation([0], 0, 16384)
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=512, point_limit=512, count_scale=1, escape_radius=256.0)
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=64, point_limit=4096, count_scale=1, escape_radius=256.0)
     #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
-    #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)
-
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
+
+
 
 
 
