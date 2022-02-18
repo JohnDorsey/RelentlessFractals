@@ -37,17 +37,16 @@ def atan_squish_to_byteint_unsigned_uniform_nearest(input_value):
     return round(math.atan(input_value/CONST_510_OVER_PI)*CONST_510_OVER_PI)
     
 assert_single_arg_fun_obeys_dict(atan_squish_to_byteint_unsigned_uniform_nearest, dict([(i,i) for i in range(0,32)]+[(64,61), (4096,249), (32768,254), (65536,255), (256*32768*32768*1048576*16*16,255)]))
+"""
+print("color response preview (appx number of unique output levels for step size setting):")
+print("__|".rjust(15, "_") + "-hitCount-->")
+for stepSize in ["stepSize", 1,2,4,8,16]:
+    print((str(stepSize)+" |").rjust(15, " "), end="")
+    for hitCount in [32, 64, 128, 256, 512, 1024, 2048, 4096]:
+        if stepSize == "stepSize":
+            print(str(hitCount).rjust(6, "_"), end="")
+        else:
+            print(str(len(set(atan_squish_to_byteint_unsigned_uniform_nearest(i*stepSize) for i in range(hitCount)))).rjust(6, " "), end="")
+    print("")
+"""
 
-    
-"""
-def squish_color(input_color):
-    assert isinstance(input_color, tuple)
-    #channel_norm_fun = lambda val: min(int(math.atan(val/256.0*(math.pi/2.0))*(2.0/math.pi)*256.0), 255)
-    channel_norm_fun = lambda val: min(255, int(atan_squish_unsigned(val, 256)))
-    result = tuple((channel_norm_fun(item) for item in input_color))
-    assert all(item >= 0 for item in result)
-    assert all(item < 256 for item in result)
-    assert all(isinstance(item, int) for item in result)
-    assert len(result) == 3
-    return result
-"""

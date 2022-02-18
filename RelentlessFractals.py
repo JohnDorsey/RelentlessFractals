@@ -1,17 +1,28 @@
 #!/usr/bin/python3
 
+"""
+todo:
+  -arrange points int shortest path greedily.
+  -order intersection points on a segment by time (actually distance from start of seg).
+  -fixed point geometry code.
+  -fix polar space intersections.
+"""
+
+
+
 import time
 import math
 import itertools
 import collections
 import copy
+import random
 
 import pygame
 
 from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
 import SegmentGeometry
-from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized
+from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized, find_left_min
 
 
 testZip = zip("ab","cd")
@@ -24,8 +35,11 @@ del testZip, testZip2
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
-IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 512 else 32))
+screen = pygame.display.set_mode((512, 512))
+IMAGE_BAND_COUNT = (
+    4 if screen.get_size()[1] <= 128 else (
+    16 if screen.get_size()[1] <= 512 else
+    32))
 
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
@@ -410,7 +424,6 @@ def gen_path_self_non_intersections(journey, intersection_fun=None): # code dupl
             yield currentSeg[1]
 """
 
-
 # disabled because it is probably better to zip them elsewhere to avoid confusion.
 """
 def gen_ladder_rung_self_intersections(journey0, journey1, intersection_fun=None):
@@ -511,9 +524,61 @@ def gen_track_decaying_mean(input_seq, feedback=None):
         memoryValue = (feedback*memoryValue) + (feedbackCompliment*item)
         yield (memoryValue, item)
 
-           
-           
-           
+
+
+def gen_path_seg_lerps(input_seq, t=None):
+    assert 0.0 <= t <= 1.0
+    for pointA, pointB in gen_track_previous_full(input_seq):
+        yield lerp(pointA, pointB, t)
+"""
+def gen_path_seg_midpoints(input_seq):
+    return gen_path_seg_lerps(input_seq, t=0.5)
+"""
+
+
+
+def make_list_copier_from_list_mutator(input_mutator):
+    def inner(input_seq, **kwargs):
+        workingList = [item for item in input_seq]
+        input_mutator(workingList)
+        return workingList
+    return inner
+
+def sort_with_greedy_neighbor_distance_minimizer(input_list, distance_fun=None):
+    for i in range(len(input_list)-1):
+        bestNextItemRelIndex, bestNextItem = find_left_min(distance_fun(input_list[i], item) for item in input_list[i+1:])
+        # assert input_list[i+1:][bestNextItemRelIndex] == bestNextItem
+        bestNextItemIndex = bestNextItemRelIndex + i + 1
+        # assert distance_fun(input_list[i], input_list[bestNextItemIndex]) == bestNextItem, (bestNextItem, i, bestNextItemRelIndex, input_list)
+        if bestNextItemIndex != i + 1:
+            input_list[i + 1], input_list[bestNextItemIndex] = (input_list[bestNextItemIndex], input_list[i+1])
+            
+def sort_to_greedy_shortest_path_order(input_list):
+    return sort_with_greedy_neighbor_distance_minimizer(input_list, (lambda testValA, testValB: abs(testValA - testValB)))
+
+def sort_to_greedy_longest_path_order(input_list):
+    return sort_with_greedy_neighbor_distance_minimizer(input_list, (lambda testValA, testValB: -abs(testValA - testValB)))
+
+    
+sorted_to_greedy_shortest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_shortest_path_order)
+sorted_to_greedy_longest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_longest_path_order)
+
+
+
+"""
+def sorted_to_greedy_shortest_path_order(input_seq):
+    workingList = [item for item in input_seq]
+    sort_to_greedy_shortest_path_order(workingList)
+    return workingList
+"""
+
+
+
+
+
+
+
+
 
 def parallel_div_complex_by_floats(view_size, screen_size):
     return complex(view_size.real/screen_size[0], view_size.imag/screen_size[1])
@@ -719,8 +784,9 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
-    output_name="test_bb_polarcross_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="bb_greedyLongOrder_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
+    print("output name is {}.".format(repr(output_name)))
     
     journeyFun = c_to_mandel_journey
     def specializedDraw():
@@ -785,12 +851,16 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
-            doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
+            # journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
+            
+            # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
+            greedyLongPathJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_longest_path_order(greedyLongPathJourney)
+            greedyLongPathJourneySelfIntersections = gen_path_self_intersections(greedyLongPathJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
             """
             zjfiJourneyToFollow = constrainedJourney # skip first item here if necessary.
@@ -800,7 +870,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"; assert escape_radius==2.0
             """
             
-            limitedVisitPointGen = itertools.islice(doubleJourneySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(greedyLongPathJourneySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -1060,7 +1130,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 def main():
 
     #test_abberation([0], 0, 16384)
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=64, point_limit=64, count_scale=4, escape_radius=4.0)
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=512, point_limit=512, count_scale=1, escape_radius=256.0)
     #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
     #test_nonatree_mandelbrot(-0.5+0j, 4+4j, 64, 6)

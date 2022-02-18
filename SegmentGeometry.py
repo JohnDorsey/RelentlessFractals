@@ -25,9 +25,12 @@ class UndefinedAtBoundaryType:
         self.message = message
 UndefinedAtBoundary = UndefinedAtBoundaryType("generic")
 """
-class UndefinedAtBoundaryError(ValueError):
+
+class UndefinedExtremeChoiceError(ValueError):
     pass
 
+class UndefinedAtBoundaryError(ValueError):
+    pass
 
 
 
@@ -145,20 +148,40 @@ def get_shared_value(input_seq, equality_test_fun=test_nearly_equal):
     return result
     
     
+    
 
-def find_min(data):
+def find_left_min(data):
     record, itemGen = peek_first_and_iter(enumerate(data))
     for item in itemGen:
         if item[1] < record[1]:
             record = item
     return record
-
-def find_max(data):
+    
+def find_left_max(data):
     record, itemGen = peek_first_and_iter(enumerate(data))
     for item in itemGen:
         if item[1] > record[1]:
             record = item
     return record
+    
+def find_only_min(data):
+    record, itemGen = peek_first_and_iter(enumerate(data))
+    for item in itemGen:
+        if item[1] < record[1]:
+            record = item
+        elif not item[1] > record[1]:
+            record = (None, None)
+    if record[0] is None:
+        raise UndefinedExtremeChoiceError("there was more than one minimum.")
+    return record
+
+"""
+def find_min_index_keyed(data, key_fun=None):
+    return find_min(key_fun(item) for item in data)[0]
+"""
+
+
+
 
 
 
@@ -402,6 +425,8 @@ def seg0_might_intersect_seg1(seg0, seg1):
     
 def seg_length(seg):
     return abs(seg[1] - seg[0])
+def complex_distance(point0, point1):
+    return abs(point0 - point1)
     
 def point_and_seg_to_missing_leg_lengths(point, seg):
     return (abs(point-seg[0]), abs(point-seg[1]))
@@ -731,7 +756,7 @@ def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
             # resultPair[i] = complex(seg[i].real, MODULUS_OVERLAP_NUDGE * (1 if resultPair[1-i].imag < math.pi else -1))
             raise UndefinedAtBoundaryError("seam intersection would be endpoint {} only. resultPair is {} for seg {}.".format(i, resultPair, seg))
     """
-    maxThetaIndex, maxTheta = find_max(imags(resultPair))
+    maxThetaIndex, maxTheta = find_left_max(imags(resultPair))
     seamIntersection = rect_seg_seam_intersection(seg)
     if seamIntersection is not None:
         resultPair[maxThetaIndex] -= 2j*math.pi
@@ -769,7 +794,9 @@ def seg_rect_to_polar_positive_theta_fragments(seg):
         # ^^^ HAA! doing this to a rect space seam intersection point was probably a source of visual bugs! the intersection point in rect space is not the same as in polar space! ever!
         assert abs(pSeamIntersectionNeutral.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersectionNeutral
         shiftAddition = complex(0, 2.0*math.pi)
-        psegImagMinIndex, psegImagMin = find_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
+        psegImagMinIndex, psegImagMin = find_only_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
+        if pseg[0].imag == pseg[1].imag:
+            raise NotImplementedError("how should this be handled?")
         if psegImagMin == 0.0:
             raise UndefinedAtBoundaryError("???1, {}".format(seg))
         assert psegImagMin <= 0.0, "this should be impossible because seamIntersection was found."
