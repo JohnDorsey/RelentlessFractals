@@ -393,6 +393,7 @@ def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None
 def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
     return gen_seg_seq_self_intersections(gen_track_previous_full(journey), intersection_fun=intersection_fun, gap_size=1)
     
+assert_equal(list(gen_path_self_intersections([complex(0,0),complex(0,4),complex(2,2),complex(-2,2), complex(-2,3),complex(10,3)], intersection_fun=SegmentGeometry.segment_intersection)), [complex(0,2), complex(0,3),complex(1,3)])
 """
 def gen_path_self_non_intersections(journey, intersection_fun=None): # code duplication, but there's no other fast way.
     knownSegs = []
@@ -574,6 +575,10 @@ del testList
 sorted_to_greedy_shortest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_shortest_path_order)
 
 sorted_to_greedy_longest_path_order = make_list_copier_from_list_mutator(sort_to_greedy_longest_path_order)
+
+def eat_in_greedy_shortest_path_order(input_list):
+    raise NotImplementedError()
+    
 
 
 
@@ -796,7 +801,9 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
-    output_name="test_bb_8xquarterbevel_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    # test_bb_8xquarterbevel
+    # greedyShortPathFromSeed_rectcross_RallGincrBinci
+    output_name="bb_sortByAbs_rectcross_rectcross(RseedouterspokeGseedhorizlegBseedvertleg)_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
@@ -860,7 +867,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            quarterbeveledJourney = gen_path_seg_quarterbevel_12x(constrainedJourney)
+            
+            # quarterbeveledJourney = gen_path_seg_quarterbevel_12x(constrainedJourney)
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
@@ -873,26 +881,31 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
             
             # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
-            # greedyLongPathJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_longest_path_order(greedyLongPathJourney)
-            # greedyLongPathJourneySelfIntersections = gen_path_self_intersections(greedyLongPathJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            """
-            zjfiJourneyToFollow = constrainedJourney # skip first item here if necessary.
-            zjfiJourneyToAnalyze = constrainedJourney
-            # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]
-            zjfiFoundationSegsToUse = "must be specified!" [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
-            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection); assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?"; assert escape_radius==2.0
-            """
+            # gspFromSeedJourney, constrainedJourney = (constrainedJourney[1:], None); sort_to_greedy_shortest_path_order(gspFromSeedJourney); assert gspFromSeedJourney[0] == seed
+            # gspFromSeedJourneySelfIntersections = gen_path_self_intersections(gspFromSeedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            limitedVisitPointGen = itertools.islice(quarterbeveledJourney, 0, point_limit)
+            sortedByAbsJourney, constrainedJourney = (constrainedJourney, None);
+            list.sort(sortedByAbsJourney, key=abs)
+            sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            
+            
+            zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
+            zjfiJourneyToAnalyze = sortedByAbsJourneySelfIntersections
+            # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]  assert escape_radius==2.0
+            zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
+            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
+            
+            
+            limitedVisitPointGen = itertools.islice(zippedJourneyFoundationIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
         
         for ii, currentItem in enumerate(visitPointListEcho.current):
-            # drawZippedPointsToChannels(currentItem)
+            drawZippedPointsToChannels(currentItem)
             # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
+            # drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
         
         # differential mode:
         """
@@ -1142,20 +1155,6 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 
 
-
-pygame.init()
-pygame.display.init()
-screen = pygame.display.set_mode((256, 256))
-IMAGE_BAND_COUNT = (
-    4 if screen.get_size()[1] <= 128 else (
-    16 if screen.get_size()[1] <= 512 else
-    32))
-
-assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
-assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
-
-COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-
 def SET_LIVE_STATUS(status_text):
     try:
         pygame.display.set_caption(status_text)
@@ -1173,13 +1172,27 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 
 
+pygame.init()
+pygame.display.init()
+screen = pygame.display.set_mode((1024, 1024))
+IMAGE_BAND_COUNT = (
+    4 if screen.get_size()[1] <= 128 else (
+    16 if screen.get_size()[1] <= 512 else
+    32))
+
+assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
+assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
+
+COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
+
+
 
 
 
 def main():
 
     #test_abberation([0], 0, 16384)
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=64, point_limit=4096, count_scale=1, escape_radius=256.0)
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=4096, point_limit=16384, count_scale=1, escape_radius=256.0)
     #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)

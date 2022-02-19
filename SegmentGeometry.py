@@ -213,7 +213,7 @@ def gen_chunks_as_lists(data, length):
 
 
 def compose_single_arg_function(func, depth=None):
-    raise NotImplementedError("needs testing!")
+    # raise NotImplementedError("needs testing!")
     assert depth >= 0
     def compose_single_arg_function_inner(*args, **kwargs):
         assert len(args) == 1, "that wasn't the deal. must be single arg."
@@ -222,6 +222,8 @@ def compose_single_arg_function(func, depth=None):
             result = func(result, **kwargs)
         return result
     return compose_single_arg_function_inner
+
+assert_equal([compose_single_arg_function((lambda testVal: testVal*3), depth=4)(testItem) for testItem in [5,7,10]], [5*81,7*81,10*81])
 
 """
 def compose_functions(function_list):
