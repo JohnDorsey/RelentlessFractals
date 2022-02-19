@@ -65,7 +65,7 @@ def shape_of(data_to_test):
     return result
     
     
-def measure_time_nicknamed(nickname, ndigits=2): # copied directly from GeodeFractals/photo.py.
+def measure_time_nicknamed(nickname, ndigits=2): # copied from GeodeFractals/photo.py. slightly modified.
     if not isinstance(nickname, str):
         raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
     def measure_time_nicknamed_inner(input_fun):
@@ -134,7 +134,7 @@ def enforce_tuple_length(input_tuple, length, default=None):
 @measure_time_nicknamed("save_surface_as")
 def save_surface_as(surface, name_prefix="", name=None):
     if name is None:
-        name = "{}{}.png".format(time.perf_counter(), str(surface.get_size()).replace(", ","x"))
+        name = "{}{}.png".format(time.monotonic(), str(surface.get_size()).replace(", ","x"))
     usedName = name_prefix + name
     print("saving file {}.".format(usedName))
     pygame.image.save(surface, usedName)
@@ -803,7 +803,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
-    output_name="bb_sortByAbs_rectcross_rectcross(RseedouterspokeGseedhorizlegBseedvertleg)_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="bb_sortedBySeeddist_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
@@ -882,30 +882,32 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             
             # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
             
-            # gspFromSeedJourney, constrainedJourney = (constrainedJourney[1:], None); sort_to_greedy_shortest_path_order(gspFromSeedJourney); assert gspFromSeedJourney[0] == seed
-            # gspFromSeedJourneySelfIntersections = gen_path_self_intersections(gspFromSeedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            #gspFromOriginJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_shortest_path_order(gspFromOriginJourney); assert gspFromOriginJourney[0] == 0
+            #gspFromOriginJourneySelfIntersections = gen_path_self_intersections(gspFromOriginJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            sortedByAbsJourney, constrainedJourney = (constrainedJourney, None);
-            list.sort(sortedByAbsJourney, key=abs)
-            sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            # sortedByAbsJourney, constrainedJourney = (constrainedJourney, None); list.sort(sortedByAbsJourney, key=abs)
+            # sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
+            sortedBySeeddistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeeddistJourney, key=(lambda pt: abs(seed-pt))); assert sortedBySeeddistJourney[0]==seed
+            sortedBySeeddistJourneySelfIntersections = gen_path_self_intersections(sortedBySeeddistJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
+            """
             zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
             zjfiJourneyToAnalyze = sortedByAbsJourneySelfIntersections
             # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]  assert escape_radius==2.0
             zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
+            """
             
-            
-            limitedVisitPointGen = itertools.islice(zippedJourneyFoundationIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(sortedBySeeddistJourneySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
         
         for ii, currentItem in enumerate(visitPointListEcho.current):
-            drawZippedPointsToChannels(currentItem)
+            # drawZippedPointsToChannels(currentItem)
             # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            # drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
+            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
         
         # differential mode:
         """
@@ -998,6 +1000,7 @@ def mean(input_seq):
 i_SEED, i_CURRENT_Z, i_PREVIOUS_Z, i_ISINSET = (0, 1, 2, 3)
 
 
+@measure_time_nicknamed("create_panel")
 def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_set_type=None, centered_sample=None):
     print("constructing empty panel...")
 
@@ -1005,15 +1008,14 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
 
     assert seed_settings.grid_size[0] <= 4096, "make sure there is enough memory for this!"
     panel = construct_data(seed_settings.grid_size[::-1], default_value=None)
+    arglessItercountFun = (lambda: c_to_mandel_itercount_fast(seed, iter_limit, escape_radius))
     
     print("populating panel...")
     
     assert abs(seed_settings.graveyard_point) > escape_radius
     for x, y, seed in seed_settings.iter_cell_descriptions(centered=centered_sample):
         panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
-        panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=(lambda: c_to_mandel_itercount_fast(seed, iter_limit, escape_radius)),
-            iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type,
-        )
+        panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=arglessItercountFun, iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type)
         panel[y][x] = panelCell
         if x == 0 and statusRateLimiter.get_judgement():
             print("create_panel: {}%...".format(str(int(float(100*y)/seed_settings.supersize[1])).rjust(2," ")))
@@ -1024,7 +1026,7 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
 
 
 
-
+@measure_time_nicknamed("do_panel_buddhabrot")
 def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=4.0, buddhabrot_set_type="bb"):
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
@@ -1174,7 +1176,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((4096, 4096))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1192,8 +1194,9 @@ COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
 def main():
 
     #test_abberation([0], 0, 16384)
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=4096, point_limit=16384, count_scale=1, escape_radius=256.0)
-    #measure_time_nicknamed("do_panel_buddhabrot")(do_panel_buddhabrot)(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
+    # for biSup, iterLim, ptLim in [(1024)]
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=16384, point_limit=16384, count_scale=1, escape_radius=256.0)
+    #do_panel_buddhabrot(SeedSettings(0+0j, 4+4j, screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, count_scale=8)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
