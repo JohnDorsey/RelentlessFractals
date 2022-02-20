@@ -1,12 +1,11 @@
 import math
+
+from TestingBasics import assert_single_arg_fun_obeys_dict
+
 CONST_2_OVER_PI = 2.0/math.pi
 CONST_510_OVER_PI = 510/math.pi
 
 
-def assert_single_arg_fun_obeys_dict(fun_to_test, qa_dict):
-    for i, pair in enumerate(qa_dict.items()):
-        testResult = fun_to_test(pair[0])
-        assert testResult == pair[1], "failure for test {}, pair={}, testResult={}.".format(i, pair, testResult)
     
 """
 def automatic_color(value):

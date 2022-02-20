@@ -22,8 +22,10 @@ import pygame
 
 from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
+from TestingBasics import assert_equal
+
 import SegmentGeometry
-from SegmentGeometry import assert_equal, real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized, find_left_min, lerp
+from SegmentGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, ensure_nonzero, peek_first_and_iter, get_normalized, find_left_min, lerp
 
 
 testZip = zip("ab","cd")
@@ -215,6 +217,7 @@ def gen_track_previous(input_seq):
     for item in input_seq:
         yield (previousItem, item)
         previousItem = item
+assert_equal(list(gen_track_previous(range(5,10))), [(None,5),(5,6),(6,7),(7,8),(8,9)])
         
         
 def gen_track_previous_full(input_seq):
@@ -225,11 +228,12 @@ def gen_track_previous_full(input_seq):
     for currentItem in inputGen:
         yield (previousItem, currentItem)
         previousItem = currentItem
-        
+assert_equal(list(gen_track_previous_full(range(5,10))), [(5,6), (6,7), (7,8), (8,9)])
+
 
 # def gen_track_recent(input_seq
         
-        
+"""
 def gen_track_previous_tuple_flatly(input_seq):
     previousTuple = None
     for item in input_seq:
@@ -249,7 +253,8 @@ def enumerate_flatly(input_seq, start=0):
             yield (i,) + item
         else:
             yield (i, item)
-            
+"""
+
             
 def construct_data(size, default_value=None):
     assert len(size) > 0
@@ -803,7 +808,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
-    output_name="bb_sortedBySeeddist_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="bb_sortedBySeedmanhdist_rectcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
@@ -888,8 +893,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # sortedByAbsJourney, constrainedJourney = (constrainedJourney, None); list.sort(sortedByAbsJourney, key=abs)
             # sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            sortedBySeeddistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeeddistJourney, key=(lambda pt: abs(seed-pt))); assert sortedBySeeddistJourney[0]==seed
-            sortedBySeeddistJourneySelfIntersections = gen_path_self_intersections(sortedBySeeddistJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            sortedBySeedmanhdistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeedmanhdistJourney, key=(lambda pt: SegmentGeometry.complex_manhattan_distance(seed, pt))); assert sortedBySeedmanhdistJourney[0]==seed
+            sortedBySeedmanhdistJourneySelfIntersections = gen_path_self_intersections(sortedBySeedmanhdistJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
             """
             zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
@@ -899,7 +904,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
             """
             
-            limitedVisitPointGen = itertools.islice(sortedBySeeddistJourneySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(sortedBySeedmanhdistJourneySelfIntersections, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:

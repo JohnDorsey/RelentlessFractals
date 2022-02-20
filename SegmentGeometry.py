@@ -3,13 +3,14 @@ import copy
 import math
 import itertools
 
+from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE
+
 
 ZERO_DIVISION_NUDGE = 2**-64
 MODULUS_OVERLAP_NUDGE = 2**-16
 MODULUS_OVERLAP_SCALE_NUDGE = 1j**MODULUS_OVERLAP_NUDGE
 LINESEG_INTERSECTION_ERROR_TOLERANCE = 1.0/1000.0
 
-COMPLEX_ERROR_TOLERANCE = (2**-36)
 COMPLEX_EQUALITY_DISTANCE = (2**-36)
 
 EXTRA_ASSERTIONS = True
@@ -34,75 +35,17 @@ class UndefinedAtBoundaryError(ValueError):
 
 
 
-
-
-def assert_equal(thing0, thing1):
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
-
-
-
-
-
-def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
-    err = val0 - val1
-    errMagnitude = abs(err)
-    if errMagnitude == 0:
-        return True
-    elif errMagnitude < error_tolerance:
-        # print("warning: {} and {} are supposed to be equal.".format(val0, val1))
-        return True
-    else:
-        if debug:
-            print("test_complex_nearly_equal: debug: {} is not nearly equal to {}, err is {}, errMagnitude is {}.".format(val0, val1, err, errMagnitude))
-        return False
-        
-
-def _assert_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
-    assert test_complex_nearly_equal(val0, val1, error_tolerance=error_tolerance, debug=True), "{} is not close enough to {} with tolerance setting {}.".format(val0, val1, error_tolerance)
-    """
-    "the difference between {} and {} is {} with length {} - that's {} times greater than the error tolerance {}.".format(
-            val0, val1, err, errMagnitude, str(errMagnitude/error_tolerance),
-        )
-    """
+def ensure_nonzero(val):
+    if val == 0.0:
+        return val + ZERO_DIVISION_NUDGE
+    return val
     
-def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
-    head = "test_nearly_equal: debug: "
-    if isinstance(thing0, complex) and isinstance(thing1, complex):
-        result = test_complex_nearly_equal(thing0, thing1, error_tolerance=error_tolerance)
-        if debug and not result:
-            print(head + "failed in br0.")
-        return result
-    elif any(isinstance(thing0, testEnterable) and isinstance(thing1, testEnterable) for testEnterable in (tuple, list)):
-        if len(thing0) != len(thing1):
-            if debug:
-                print(head + "lengths differ.")
-            return False
-        result = all(test_nearly_equal(thing0[i], thing1[i], error_tolerance=error_tolerance) for i in range(max(len(thing0), len(thing1))))
-        if debug and not result:
-            print(head + "failed in br1.")
-        return result
-    else:
-        result = (thing0 == thing1)
-        if debug and not result:
-            print(head + "failed in br2.")
-        return result
-
-def assert_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
-    assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance, debug=True), "{} does not nearly equal {}.".format(repr(thing0), repr(thing1))
-
 
 def assure_positive(val):
     assert not val <= 0
     return val
 
-
-def ensure_nonzero(val):
-    if val == 0.0:
-        return val + ZERO_DIVISION_NUDGE
-    return val
-
-
-
+    
 
 
 def reals(input_seq):
@@ -159,12 +102,14 @@ def find_left_min(data):
 assert find_left_min([-5,-7,-2,-3,-4,5,4,3,2,1]) == (1, -7)
 assert find_left_min([9,8,7,6,5,6,7,8,9]) == (4, 5)
     
+
 def find_left_max(data):
     record, itemGen = peek_first_and_iter(enumerate(data))
     for item in itemGen:
         if item[1] > record[1]:
             record = item
     return record
+    
     
 def find_only_min(data):
     record, itemGen = peek_first_and_iter(enumerate(data))
@@ -177,6 +122,7 @@ def find_only_min(data):
         raise UndefinedExtremeChoiceError("there was more than one minimum.")
     return record
 
+
 """
 def find_min_index_keyed(data, key_fun=None):
     return find_min(key_fun(item) for item in data)[0]
@@ -188,16 +134,6 @@ def find_min_index_keyed(data, key_fun=None):
 
 
 
-
-
-def assert_empty(input_seq):
-    inputGen = iter(input_seq)
-    try:
-        first = next(inputGen)
-    except StopIteration:
-        return
-    assert False, "input seq was not empty, first item was {}.".format(repr(first))
-    
 
 def gen_chunks_as_lists(data, length):
     itemGen = iter(data)
@@ -431,8 +367,14 @@ def seg0_might_intersect_seg1(seg0, seg1):
     
 def seg_length(seg):
     return abs(seg[1] - seg[0])
+
 def complex_distance(point0, point1):
     return abs(point0 - point1)
+assert_nearly_equal(complex_distance(5+5j, 7+7j), (2**0.5)*2)
+
+def complex_manhattan_distance(point0, point1):
+    return abs(point0.real-point1.real)+abs(point0.imag-point1.imag)
+assert_nearly_equal(complex_manhattan_distance(5+5j, 7+7j), 4)
     
 def point_and_seg_to_missing_leg_lengths(point, seg):
     return (abs(point-seg[0]), abs(point-seg[1]))
@@ -635,6 +577,7 @@ def get_normalized(value):
         return complex(1,0)
     return value / abs(value)
 # assert get_normalized(complex(0.0,-0.0)) = complex(0.0,-1.0)
+assert_nearly_equal(get_normalized(complex(3,3)), complex(2**0.5/2, 2**0.5/2))
 
 
 def seg_is_valid(seg):
