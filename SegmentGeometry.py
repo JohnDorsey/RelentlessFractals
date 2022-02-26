@@ -2,8 +2,20 @@
 import copy
 import math
 import itertools
+import operator
 
-from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE
+from enum import Enum
+
+
+from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, get_shared_value, assert_isinstance
+from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
+
+from PureGenTools import peek_first_and_iter
+
+import ComplexGeometry
+from ComplexGeometry import point_polar_to_rect, point_rect_to_polar, ComplexOnPolarSeam
+
+import Trig
 
 
 ZERO_DIVISION_NUDGE = 2**-64
@@ -20,6 +32,11 @@ if not EXTRA_ASSERTIONS:
         print("EXTRA_ASSERTIONS IS FALSE in SegmentGeometry.py")
 
 
+class InteractionSpecialAnswer(Enum):
+    # INTERSECTION_AT_SEGMENT_END = "intersection_at_segment_end"
+    SEAM_TOUCH_AT_ORIGIN = "seam_touch_at_origin"
+    SEAM_INTERSECTION_AT_ORIGIN = "seam_intersection_at_origin"
+
 """
 class UndefinedAtBoundaryType:
     def __init__(self, message):
@@ -34,12 +51,12 @@ class UndefinedAtBoundaryError(ValueError):
     pass
 
 
-
+"""
 def ensure_nonzero(val):
     if val == 0.0:
         return val + ZERO_DIVISION_NUDGE
     return val
-    
+"""
 
 def assure_positive(val):
     assert not val <= 0
@@ -56,14 +73,6 @@ def imags(input_seq):
     for item in input_seq:
         yield item.imag
         
-def real_of(val):
-    return val.real
-    
-def imag_of(val):
-    return val.imag
-    
-def inv_abs_of(val):
-    return 1.0/max(ZERO_DIVISION_NUDGE, abs(val))
 
 def lerp(point0, point1, t):
     return (point0*(1.0-t)) + (point1*t)
@@ -75,21 +84,6 @@ def lerp_confined(point0, point1, t):
     
 
 
-def peek_first_and_iter(input_seq):
-    inputGen = iter(input_seq)
-    try:
-        first = next(inputGen)
-    except StopIteration:
-        raise IndexError("empty, couldn't peek first!")
-    return (first, inputGen)
-
-
-def get_shared_value(input_seq, equality_test_fun=test_nearly_equal):
-    result, inputGen = peek_first_and_iter(input_seq)
-    for i, item in enumerate(inputGen):
-        assert equality_test_fun(item, result), "at index {}, item value {} does not equal shared value {}.".format(i, repr(item), repr(result))
-    return result
-    
     
     
 
@@ -175,139 +169,14 @@ def compose_functions(function_list):
 
 
 
-def make_transformed_copy(data, enter_trigger_fun=None, transform_trigger_fun=None, transform_fun=None):
-    if enter_trigger_fun is None:
-        def enter_trigger_fun(testItem):
-            if isinstance(testItem, (tuple,list)):
-                assert not transform_trigger_fun(testItem)
-                return True
-            else:
-                return False
-    if enter_trigger_fun(data):
-        return type(data)(make_transformed_copy(item, enter_trigger_fun=enter_trigger_fun, transform_trigger_fun=transform_trigger_fun, transform_fun=transform_fun) for item in data)
-    elif transform_trigger_fun(data):
-        return transform_fun(data)
-    else:
-        return copy.deepcopy(data)
-    
-
-
-def fuzz_inputs_share_output(input_fun, fuzzer_gen):
-    """
-    def inner(*args, **kwargs):
-        testResultGen = (input_fun(*fuzzer(args), **kwargs) for fuzzer in fuzzer_gen)
-        return get_shared_value(testResultGen)
-    return inner
-    """
-    defuzzerGen = itertools.repeat((lambda x: x))
-    return fuzz_inputs_share_defuzzed_output(input_fun, zip(fuzzer_gen, defuzzerGen))
-
-
-def fuzz_inputs_share_defuzzed_output(input_fun, fuzzer_defuzzer_pair_gen):
-    def inner(*args, **kwargs):
-        testResultGen = (inverse_fuzzer(input_fun(*fuzzer(args), **kwargs)) for fuzzer, inverse_fuzzer in fuzzer_defuzzer_pair_gen)
-        return get_shared_value(testResultGen)
-    return inner
-        
-
-
-def multi_traverse(data, count=None):
-    assert iter(data) is not iter(data)
-    assert count > 0
-    if count == 1:
-        for item in data:
-            yield (item,)
-    else:
-        for item in data:
-            for extension in multi_traverse(data, count=count-1):
-                yield (item,) + extension
-assert list(multi_traverse([1,2], count=2)) == [(1,1),(1,2),(2,1),(2,2)]
-
-
-def all_products_from_seq_pair(data0, data1):
-    for itemA in data0:
-        for itemB in data1:
-            yield itemA*itemB
-assert list(all_products_from_seq_pair([1,2],[3,5,100])) == [3, 5, 100, 6, 10, 200]
-
-
-def complex_parallel_product(values):
-    result = complex(1,1)
-    for value in values:
-        result = complex(result.real*value.real, result.imag*value.imag)
-    return result
-assert complex_parallel_product([1+2j,5+100j]) == 5+200j
-
-def complex_pair_parallel_div(val0, val1):
-    return complex(val0.real/val1.real, val0.imag/val1.imag)
-    
-    
-
-    
-    
 
 
 
 
 
-def gen_basic_complex_fuzzers_and_inverses(include_neutral=True):
-    neutralCounter = 0
-    for rOff, iOff in multi_traverse((-1.0, 0.0, 1.0), count=2):
-        for rScale, iScale in multi_traverse(list(all_products_from_seq_pair((0.5, 1.0, 2.0), (-1.0, 1.0))), count=2):
-            for complexScale in (1.0+0.0j, 0.0+0.7j):
-                isNeutral = ((rOff, iOff, rScale, iScale, complexScale) == (0.0, 0.0, 1.0, 1.0, 1.0+0.0j))
-                if isNeutral:
-                    neutralCounter += 1
-                    if not include_neutral:
-                        continue
-                
-                def currentFun(inputArgs):
-                    return make_transformed_copy(
-                        inputArgs,
-                        transform_trigger_fun=(lambda x: isinstance(x, complex)),
-                        transform_fun=(lambda w: complex_parallel_product([w+complex(rOff, iOff), complex(rScale, iScale)])*complexScale),
-                    )
-                def currentInverseFun(inputArgs):
-                    return make_transformed_copy(
-                        inputArgs,
-                        transform_trigger_fun=(lambda x: isinstance(x, complex)),
-                        transform_fun=(lambda w: complex_pair_parallel_div(w/complexScale, complex(rScale, iScale))-complex(rOff, iOff)),
-                    )
-                    
-                yield (currentFun, currentInverseFun)
-    assert neutralCounter == 1
-                
-for testFun, testInverseFun in gen_basic_complex_fuzzers_and_inverses():
-    assert testInverseFun(testFun(complex(10,10000))) == complex(10,10000)
-    
-
-def basic_complex_fuzz_inputs_only(input_fun):
-    """
-    def fuzzedArgTupleGenFun(inputArgs):
-        for fuzzFun, _ in gen_basic_complex_fuzzers_and_inverses():
-            yield fuzzFun(inputArgs)
-    """
-    fuzzerGen = (pair[0] for pair in gen_basic_complex_fuzzers_and_inverses())
-    inner = fuzz_inputs_share_output(input_fun, fuzzerGen)
-    return inner
-
-testList = []
-def testAppender(inputItem):
-    testList.append(inputItem)
-basic_complex_fuzz_inputs_only(testAppender)(100.0+10000.0j)
-assert len(set(testList)) == 9*(3*2*3*2)*2
-testList.clear()
-basic_complex_fuzz_inputs_only(testAppender)([["a", (200.0+20000.0j,)], (5, 6), "b"])
-for item in testList:
-    assert item[-2:] == [(5,6), "b"]
-assert len(set(str(item) for item in testList)) == 9*3*2*3*2*2
-del testList
-del testAppender
 
 
-def basic_complex_fuzz_io(input_fun):
-    inner = fuzz_inputs_share_defuzzed_output(input_fun, gen_basic_complex_fuzzers_and_inverses())
-    return inner
+
 
 
 
@@ -365,23 +234,29 @@ def seg0_might_intersect_seg1(seg0, seg1):
     seg1perp = seg_turned_quarter_turn_around_midpoint(seg1)
     return ((seg_end_distance_to_point_order_trisign(seg1perp, seg0[0]) * seg_end_distance_to_point_order_trisign(seg1perp, seg0[1])) != 1) # return true if trisigns are anything other than (-1,-1) or (1,1).
     
+    
 def seg_length(seg):
     return abs(seg[1] - seg[0])
+
 
 def complex_distance(point0, point1):
     return abs(point0 - point1)
 assert_nearly_equal(complex_distance(5+5j, 7+7j), (2**0.5)*2)
 
+
 def complex_manhattan_distance(point0, point1):
     return abs(point0.real-point1.real)+abs(point0.imag-point1.imag)
 assert_nearly_equal(complex_manhattan_distance(5+5j, 7+7j), 4)
     
+    
 def point_and_seg_to_missing_leg_lengths(point, seg):
     return (abs(point-seg[0]), abs(point-seg[1]))
+    
     
 def point_might_be_on_seg(point, seg):
     dist0, dist1 = point_and_seg_to_missing_leg_lengths(point, seg)
     return abs(dist0+dist1-seg_length(seg)) < COMPLEX_EQUALITY_DISTANCE
+    
     
 """
 def point_and_seg_to_lerping_component(point, seg):
@@ -459,13 +334,13 @@ def segment_intersection(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
                 # assert False, (seg0, seg1, errorDistance, t, u)
     return seg0intersection
     
-assert not basic_complex_fuzz_inputs_only(segments_intersect)((1+1j, 2+1j), (1+2j, 2+2j))
-assert basic_complex_fuzz_inputs_only(segments_intersect)((1+1j, 2+2j), (1+2j, 2+1j))
-assert not basic_complex_fuzz_inputs_only(segments_intersect)((1+1j, 5+5j), (2+1j, 6+5j))
+assert not basic_complex_fuzz_inputs_only(segments_intersect, equality_test_fun=operator.eq)((1+1j, 2+1j), (1+2j, 2+2j))
+assert basic_complex_fuzz_inputs_only(segments_intersect, equality_test_fun=operator.eq)((1+1j, 2+2j), (1+2j, 2+1j))
+assert not basic_complex_fuzz_inputs_only(segments_intersect, equality_test_fun=operator.eq)((1+1j, 5+5j), (2+1j, 6+5j))
     
-assert basic_complex_fuzz_io(segment_intersection)((1.0+1.0j, 1.0+3.0j), (0.0+2.0j, 2.0+2.0j)) == (1.0+2.0j)
-assert basic_complex_fuzz_io(segment_intersection)((1.0+1.0j, 1.0+3.0j), (0.0+0.0j, 0.0+2.0j)) == None
-assert basic_complex_fuzz_io(segment_intersection)((0+0j, 1+1j), (1+0j, 0+1j)) == (0.5+0.5j)
+assert basic_complex_fuzz_io(segment_intersection, equality_test_fun=test_nearly_equal)((1.0+1.0j, 1.0+3.0j), (0.0+2.0j, 2.0+2.0j)) == (1.0+2.0j)
+assert basic_complex_fuzz_io(segment_intersection, equality_test_fun=test_nearly_equal)((1.0+1.0j, 1.0+3.0j), (0.0+0.0j, 0.0+2.0j)) == None
+assert basic_complex_fuzz_io(segment_intersection, equality_test_fun=test_nearly_equal)((0+0j, 1+1j), (1+0j, 0+1j)) == (0.5+0.5j)
 
 
 
@@ -477,107 +352,11 @@ assert basic_complex_fuzz_io(segment_intersection)((0+0j, 1+1j), (1+0j, 0+1j)) =
 
 
 
-def div_complex_by_i(val):
-    return complex(val.imag, -val.real)
-
-for testPt in (complex(*argPair) for argPair in multi_traverse([-100,-2,-1,0,1,2,100], count=2)):
-    assert_nearly_equal(div_complex_by_i(testPt), testPt/complex(0,1))
     
     
     
     
-def float_composition_magnitude(val):
-    return 0 if val == 0 else 1
-    
-def float_composition_sign(val):
-    sign = -1 if val < 0.0 else 1 if val > 0.0 else None
-    if sign is None:
-        sign = -1 if str(val)[0] == "-" else 1
-    return sign
-    
-def float_composition_positive(val):
-    return float_composition_sign(val) > 0
 
-"""
-def get_complex_angle(c):
-    if c.real == 0:
-        c = c + ZERO_DIVISION_NUDGE
-    return math.atan(c.imag/c.real) + (math.pi if c.real < 0 else (2*math.pi if c.imag <= 0 else 0.0))
-"""
-"""
-            # return UndefinedAtBoundary
-            if extra_assertions:
-                otherResult = "DEFAULT"
-                try:
-                    cconj = c.conjugate()
-                    otherResult = get_complex_angle(cconj, extra_assertions=False)
-                except UndefinedAtBoundaryError as uabe:
-                    raise UndefinedAtBoundaryError("can't get complex angle of point on seam, with extra assertions.")
-                assert False, "asymmetrical failure for c={}, cconj={}, (c==cconj)={}, otherResult={}. ".format(c, cconj, (c==cconj), otherResult)
-            else:
-                raise UndefinedAtBoundaryError("can't get complex angle of point on seam, without extra assertions.")
-
-"""
-"""
-def get_complex_angle(c):
-    if c.imag == 0:
-        if c.real > 0:
-            return 0.0
-        elif c.real < 0:
-            return math.pi
-        else:
-            assert c.real == 0
-            
-            return 0.0
-                
-    if c.real == 0:
-        return (0.5*math.pi if c.imag >= 0 else 1.5*math.pi)
-    if c.imag < 0:
-        return math.pi + get_complex_angle(complex(-c.real, assure_positive(-c.imag)))
-    if c.real < 0:
-        # return math.pi*0.5 + get_complex_angle(complex(c.imag, assure_positive(-c.real)
-        return math.pi*0.5 + get_complex_angle(c/complex(0,1))
-    return math.atan(c.imag/c.real)
-"""
-def get_complex_angle(c):
-    if c.imag == 0:
-        if c.real == 0:
-            raise UndefinedAtBoundaryError("origin has no angle!")
-        else:
-            if float_composition_positive(c.real):
-                return 0.0
-            else:
-                return math.pi
-    else:
-        if c.real == 0:
-            assert c.imag != 0
-            return (0.5*math.pi if float_composition_positive(c.imag) else 1.5*math.pi)
-        else:
-            if not float_composition_positive(c.imag):
-                return math.pi + get_complex_angle(complex(-c.real, assure_positive(-c.imag)))
-            if not float_composition_positive(c.real):
-                # return math.pi*0.5 + get_complex_angle(complex(c.imag, assure_positive(-c.real)
-                return math.pi*0.5 + get_complex_angle(div_complex_by_i(c))
-            return math.atan(c.imag/c.real)
-    
-assert_nearly_equal(get_complex_angle(2+2j), math.pi/4.0)
-assert_nearly_equal(get_complex_angle(-2+2j), 3*math.pi/4.0)
-assert_nearly_equal(get_complex_angle(-2-2j), 5*math.pi/4.0)
-assert_nearly_equal(get_complex_angle(2-2j), 7*math.pi/4.0)
-
-assert_nearly_equal(get_complex_angle(1j), math.pi/2.0)
-assert_nearly_equal(get_complex_angle(-1j), 1.5*math.pi)
-
-
-def get_normalized(value):
-    if value == 0:
-        assert isinstance(value, complex)
-        # return get_normalized(complex(math.copysign(1,value.real), math.copysign(1,value.imag)))
-        print("get_normalized will return its default value. This shouldn't happen often.")
-        return complex(1,0)
-    return value / abs(value)
-# assert get_normalized(complex(0.0,-0.0)) = complex(0.0,-1.0)
-assert_nearly_equal(get_normalized(complex(3,3)), complex(2**0.5/2, 2**0.5/2))
 
 
 def seg_is_valid(seg):
@@ -606,9 +385,10 @@ def seg_multiplied_by_complex(seg, val):
 def complex_swap_complex_components(val):
     return complex(val.imag, val.real)
 
-def seg_swap_complex_components(val):
+"""
+def seg_swap_complex_components(seg):
     return [complex_swap_complex_components(seg[i]) for i in (0,1)]
-    
+"""
 
 def seg_horizontal_line_intersection(seg, imag_pos=None):
     segImags = [seg[0].imag, seg[1].imag]
@@ -642,7 +422,9 @@ def seg_vertical_line_intersection(seg, real_pos=None):
 # if math.copysign(1.0, seg[0].imag)*math.copysign(1.0, seg[1].imag) >= 0:
     
 def seg_real_axis_intersection(seg):
-    return seg_horizontal_line_intersection(seg, imag_pos=0.0)
+    result = seg_horizontal_line_intersection(seg, imag_pos=0.0)
+    # assert result.imag == 0 <--- this fails?
+    return result
     
 def seg_imag_axis_intersection(seg):
     return seg_vertical_line_intersection(seg, real_pos=0.0)
@@ -680,49 +462,46 @@ def rect_seg_seam_intersection(seg):
         return None
     if realAxisIntersection.real == 0.0:
         # print("rect_seg_crosses_polar_seam: warning: returning None for seg crossing origin.")
-        raise UndefinedAtBoundaryError("seg crossing origin.")
+        # raise UndefinedAtBoundaryError("seg crossing origin.")
+        if complex(0,0) in seg:
+            return InteractionSpecialAnswer.SEAM_TOUCH_AT_ORIGIN
+        else:
+            return InteractionSpecialAnswer.SEAM_INTERSECTION_AT_ORIGIN
     return realAxisIntersection
         
         
-def point_polar_to_rect(polar_pt):
-    return polar_pt.real*(math.e**(polar_pt.imag*1j))
-    
-    
-def point_rect_to_polar(rect_pt):
-    # assert isinstance(rect_pt, complex)
-    theta = get_complex_angle(rect_pt)
-    # if theta is UndefinedAtBoundary:
-    #     return UndefinedAtBoundary
-    return complex(abs(rect_pt), theta)
     
     
 def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
     assert len(seg) == 2
     resultPair = [point_rect_to_polar(seg[i]) for i in (0, 1)]
-    """
-    for i in (0,1):
-        if resultPair[i] is UndefinedAtBoundary:
-            # resultPair[i] = complex(seg[i].real, MODULUS_OVERLAP_NUDGE * (1 if resultPair[1-i].imag < math.pi else -1))
-            raise UndefinedAtBoundaryError("seam intersection would be endpoint {} only. resultPair is {} for seg {}.".format(i, resultPair, seg))
-    """
-    maxThetaIndex, maxTheta = find_left_max(imags(resultPair))
-    seamIntersection = rect_seg_seam_intersection(seg)
-    if seamIntersection is not None:
-        resultPair[maxThetaIndex] -= 2j*math.pi
+    
+    if ComplexGeometry.SpecialAnswer.ORIGIN in resultPair:
+        seamIntersection = InteractionSpecialAnswer.SEAM_TOUCH_AT_ORIGIN
+    else:
+        maxThetaIndex, maxTheta = find_left_max(imags(resultPair))
+        seamIntersection = rect_seg_seam_intersection(seg)
+        if seamIntersection is not None:
+            resultPair[maxThetaIndex] -= 2j*math.pi # should this still be done?
         
     result = tuple(resultPair)
-    
-    assert seg_is_valid(result)
+    # assert seg_is_valid(result)
     return (result, seamIntersection)
     
 
 def seg_rect_to_polar_and_polar_space_seam_intersection(seg):
     pseg, rectSpaceSeamIntersection = seg_rect_to_polar_and_rect_space_seam_intersection(seg)
-    polarSpaceSeamIntersection = rect_seg_seam_intersection(pseg) # pretend polar seg is rect to solve for polar space seg seam intersection.
+    if ComplexGeometry.SpecialAnswer.ORIGIN in pseg:
+        assert rectSpaceSeamIntersection is InteractionSpecialAnswer.SEAM_TOUCH_AT_ORIGIN
+        polarSpaceSeamIntersection = rectSpaceSeamIntersection
+    else:
+        polarSpaceSeamIntersection = rect_seg_seam_intersection(pseg) # pretend polar seg is rect to solve for polar space seg seam intersection.
+        
     if rectSpaceSeamIntersection is not None:
-        assert polarSpaceSeamIntersection is not None
-        assert abs(polarSpaceSeamIntersection) >= abs(rectSpaceSeamIntersection)
-        assert abs(polarSpaceSeamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE
+        if isinstance(polarSpaceSeamIntersection, complex):
+            assert polarSpaceSeamIntersection is not None
+            assert abs(polarSpaceSeamIntersection) >= abs(rectSpaceSeamIntersection)
+            assert abs(polarSpaceSeamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE
     else:
         if polarSpaceSeamIntersection is not None:
             raise UndefinedAtBoundaryError("there was a polar space seam intersection but not a rect space one!")
@@ -733,38 +512,59 @@ def seg_rect_to_polar_and_polar_space_seam_intersection(seg):
 
 
 def seg_rect_to_polar_positive_theta_fragments(seg):
+    assert seg_is_valid(seg)
     # raise NotImplementedError("still has major bugs.")
     pseg, pSeamIntersection = seg_rect_to_polar_and_polar_space_seam_intersection(seg)
-    if pSeamIntersection is None:
+    
+    if pSeamIntersection == InteractionSpecialAnswer.SEAM_TOUCH_AT_ORIGIN:
         fragmentSegs = [pseg]
+        for testPt in pseg:
+            if isinstance(testPt, complex):
+                assert testPt.real > 0, "it shouldn't be origin now if it wasn't an origin enum, right?"
+                assert 0 <= testPt.imag <= Trig.tau
+    elif pSeamIntersection == InteractionSpecialAnswer.SEAM_INTERSECTION_AT_ORIGIN:
+        raise NotImplementedError("illegal origin intersection, what should be done?")
     else:
-        assert abs(pSeamIntersection.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersection
-        pSeamIntersectionNeutral = complex(abs(pSeamIntersection), 0.0)
-        # ^^^ HAA! doing this to a rect space seam intersection point was probably a source of visual bugs! the intersection point in rect space is not the same as in polar space! ever!
-        assert abs(pSeamIntersectionNeutral.imag) <= COMPLEX_ERROR_TOLERANCE, pSeamIntersectionNeutral
-        shiftAddition = complex(0, 2.0*math.pi)
-        psegImagMinIndex, psegImagMin = find_only_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
-        if pseg[0].imag == pseg[1].imag:
-            raise NotImplementedError("how should this be handled?")
-        if psegImagMin == 0.0:
-            raise UndefinedAtBoundaryError("???1, {}".format(seg))
-        assert psegImagMin <= 0.0, "this should be impossible because seamIntersection was found."
-        fragmentPointPairs = [[pseg[0], pSeamIntersectionNeutral], [pSeamIntersectionNeutral, pseg[1]]]
-        pointPairToShift = fragmentPointPairs[psegImagMinIndex]
-        for i in (0, 1):
-            pointPairToShift[i] += shiftAddition
-        fragmentSegs = [tuple(pointPair) for pointPair in fragmentPointPairs]
+        assert not ComplexGeometry.SpecialAnswer.ORIGIN in pseg, (seg, pseg, pSeamIntersection)
+        if pSeamIntersection is None:
+            fragmentSegs = [pseg]
+        else:
+            assert type(pSeamIntersection) == complex, pSeamIntersection
+            assert abs(pSeamIntersection.imag) <= COMPLEX_EQUALITY_DISTANCE, pSeamIntersection
+            pSeamIntersection = complex(pSeamIntersection.real, max(pSeamIntersection.imag, 0.0))
+            
+            psegImagMinIndex, psegImagMin = find_only_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
+            if pseg[0].imag == pseg[1].imag:
+                raise NotImplementedError("how should this be handled?")
+            if psegImagMin == 0.0:
+                raise UndefinedAtBoundaryError("???1, {}".format(seg))
+            assert psegImagMin <= 0.0, "this should be impossible because seamIntersection was found (not None)."
+            fragmentPointPairs = [[pseg[0], pSeamIntersection], [pSeamIntersection, pseg[1]]]
+            for ptIndex in (0, 1):
+                fragmentPointPairs[psegImagMinIndex][ptIndex] += complex(0, Trig.tau)
+
+            fragmentSegs = [tuple(pointPair) for pointPair in fragmentPointPairs]
+            testMin = min(min(imags(testSeg)) for testSeg in fragmentSegs)
+            if testMin == 0.0:
+                raise UndefinedAtBoundaryError("???2, {}".format(seg))
+            assert testMin >= 0.0, "shift process apparently failed." # why?
         
-        testMin = min(min(imags(testSeg)) for testSeg in fragmentSegs)
-        if testMin == 0.0:
-            raise UndefinedAtBoundaryError("???2, {}".format(seg))
-        assert testMin > 0.0, "shift process apparently failed."
     assert len(fragmentSegs) in (1,2), (fragmentSegs, seg, pseg, pSeamIntersection)
     assert_nearly_equal(point_polar_to_rect(fragmentSegs[0][0]), seg[0])
     assert_nearly_equal(point_polar_to_rect(fragmentSegs[-1][1]), seg[1])
+    
+    for i, fragmentSeg in enumerate(fragmentSegs): # replace (rotationless origin, pt) with (origin with same rotation as pt, pt).
+        # assert seg_is_valid(fragmentSeg), (i, fragmentSeg, seg, pseg)
+        for ii in (0, 1):
+            if fragmentSeg[ii] is ComplexGeometry.SpecialAnswer.ORIGIN:
+                assert fragmentSeg[1-ii] is not ComplexGeometry.SpecialAnswer.ORIGIN
+                replacementPair = list(fragmentSeg)
+                replacementPair[ii] = complex(0, fragmentSeg[1-ii].imag)
+                fragmentSegs[i] = tuple(replacementPair)
+                
     return fragmentSegs
 
-    
+"""
 def seg_polar_to_rect(seg):
     assert len(seg) == 2
     return tuple(point_polar_to_rect(seg[i]) for i in (0,1))
@@ -773,6 +573,7 @@ def seg_polar_to_rect(seg):
 for testPt in [1+1j, -1+1j, -1-1j, 1-1j]:
     # assert_equals(testPt, point_rect_to_polar(point_polar_to_rect(testPt))). negative length is not fair.
     assert_nearly_equal(testPt, point_polar_to_rect(point_rect_to_polar(testPt)))
+"""
     
 """
 def polar_space_segment_intersection(seg0, seg1):
@@ -892,8 +693,10 @@ def rect_seg_polar_space_intersection(seg0, seg1, force_symmetry=False, debug=Fa
         else:
             return None
         
+    # print("rect_seg_polar_space_intersection: {}".format(psegFrags))
     for pseg0frag in psegFrags[0]:
         for pseg1frag in psegFrags[1]:
+            
             pIntersection = segment_intersection(pseg0frag, pseg1frag)
             if pIntersection is not None:
                 assert isinstance(pIntersection, complex)

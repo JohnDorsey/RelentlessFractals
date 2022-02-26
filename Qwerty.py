@@ -5,8 +5,12 @@ KEYBOARD_CHARS = KEYBOARD_DIGITS + KEYBOARD_LETTERS + KEYBOARD_SYMBOLS
 KEYBOARD_LOWER_CHOOSABLES = "`1234567890-=[]\;',./"
 KEYBOARD_UPPER_CHOOSABLES = "~!@#$%^&*()_+{}|:\"<>?"
 
-LMMS_PIANO_NOTES = ["zsxdcvgbhnjm,l.;/",
-               "            q2w3er5t6y7ui9o0p[=]"]
+LMMS_PIANO_NOTE_ROW_OPTIONS = ["zsxdcvgbhnjm,l.;/               ", # rows MUST be the same length for code in this file!
+                               "            q2w3er5t6y7ui9o0p[=]"]
+LMMS_PIANO_NOTE_KEY_COUNT = len(LMMS_PIANO_NOTE_ROW_OPTIONS[0])
+LMMS_PIANO_NOTE_KEY_OPTIONS = [tuple(noteRow[noteIndex] for noteRow in LMMS_PIANO_NOTE_ROW_OPTIONS if noteRow[noteIndex] != " ") for noteIndex in range(LMMS_PIANO_NOTE_KEY_COUNT)]
+LMMS_PIANO_NOTE_READABLE_KEYS = [sorted(LMMS_PIANO_NOTE_KEY_OPTIONS[noteIndex], key=(lambda testOption: (KEYBOARD_LETTERS+KEYBOARD_DIGITS+KEYBOARD_SYMBOLS).index(testOption)))[0] for noteIndex in range(LMMS_PIANO_NOTE_KEY_COUNT)]
+LMMS_PIANO_NOTE_CHAR_SET = set.union(*[set(char for char in noteStr if char != " ") for noteStr in LMMS_PIANO_NOTE_ROW_OPTIONS])
 
 
 def apply_capitalization_to_char(new_char, caps_lock_is_on, shift_is_on):

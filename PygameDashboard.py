@@ -45,9 +45,10 @@ def capture_exits(input_fun):
         except KeyboardInterrupt:
             print("KeyboardInterrupt intercepted.")
             return
-    return modifiedFun"""
+    return modifiedFun
+"""
    
-   
+
 def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
     if event.key == pygame.K_BACKSPACE:
         return string[:-1]
@@ -135,20 +136,22 @@ class KeyStateTracker:
             if currentResult is not None:
                 yield currentResult
     
-    def get_state(self, key_code):
+    def get_state(self, key_code, peek=False):
         state = self.key_states[key_code]
         result = copy.deepcopy(state)
-        state["is_new"] = False
+        if not peek:
+            state["is_new"] = False
         return result
         
-    def get_stylized_report(self, key_code):
+        
+    def get_stylized_report(self, key_code, peek=False):
         if key_code not in self.key_report_styles:
             raise KeyError("no report style set for key with code {}.".format(key_code))
         else:
-            return self.get_state(key_code)[self.key_report_styles[key_code]]
+            return self.get_state(key_code, peek=peek)[self.key_report_styles[key_code]]
             
-    def get_stylized_reports(self, key_codes):
-        return [self.get_stylized_report(keyCode) for keyCode in key_codes]
+    def get_stylized_reports(self, key_codes, peek=False):
+        return [self.get_stylized_report(keyCode, peek=peek) for keyCode in key_codes]
         
     
     

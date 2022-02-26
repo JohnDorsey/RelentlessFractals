@@ -1,14 +1,46 @@
 
+import operator
+
+from PureGenTools import peek_first_and_iter
+
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
+
 
 """
 def assert_equal_or_isinstance(thing0, thing1):
     ...
 """
 
-def assert_equal(thing0, thing1):
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
+
+class AssuranceError(AssertionError):
+    pass
+
+
+
+
+def assert_equal(thing0, thing1, message=""):
+    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)+message
+    
+def assert_less(thing0, thing1, message=""):
+    assert thing0 < thing1, "{} is not less than {}.".format(thing0, thing1)+message
+
+def assert_isinstance(thing0, reference_class, message=""):
+    assert isinstance(thing0, reference_class), "{} of type {} is not an instance of {}.".format(repr(thing0), repr(type(thing0)), repr(reference_class))+message
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def dict_swiss_cheese_access(dict_list, key):
@@ -53,7 +85,17 @@ def lpack_exception_raised_by(fun_to_test):
             resultExceptionPart = e
         return (resultExceptionPart, resultNormalPart)
     return inner
+    
+assert lpack_exception_raised_by(sum)([3,4,5]) == (None, 12)
+testResult = lpack_exception_raised_by(sum)([3,4,"a",5])
+assert testResult[1] is None
+assert isinstance(testResult[0], TypeError)
+del testResult
 
+"""
+def lpack_exception_type_raised_by(fun_to_test):
+    def inner(*args, **kwargs):
+"""
 
 def get_exception_raised_by(fun_to_test):
     def inner(*args, **kwargs):
@@ -62,6 +104,33 @@ def get_exception_raised_by(fun_to_test):
         return result
     return inner
     
+# test later.
+    
+    
+def raises_instanceof(fun_to_test, reference_class, debug=False):
+    def inner(*args, **kwargs):
+        exceptionResult = get_exception_raised_by(fun_to_test)(*args, **kwargs)
+        result = isinstance(exceptionResult, reference_class)
+        if debug and not result:
+            print("raises_instanceof: actually got exception {}, not of type {}.".format(repr(exceptionResult), repr(reference_class)))
+        return result
+    return inner
+    
+def testRaiseIndexError(*args):
+    raise IndexError()
+assert isinstance(get_exception_raised_by(testRaiseIndexError)(1,2,3), IndexError)
+assert isinstance(get_exception_raised_by(str)(1), type(None))
+assert raises_instanceof(testRaiseIndexError, IndexError)(1,2,3) == True
+assert raises_instanceof(str, IndexError)(1) == False
+del testRaiseIndexError
+
+
+def assert_raises_instanceof(fun_to_test, reference_class, debug=False):
+    def inner(*args, **kwargs):
+        result = raises_instanceof(fun_to_test, reference_class, debug=debug)(*args, **kwargs)
+        assert result is True, (fun_to_test, reference_class, result)
+    return inner
+
 """
 def get_only_non_none_value(input_seq):
     result = None
@@ -72,6 +141,59 @@ def get_only_non_none_value(input_seq):
     assert result is not None, "There were no non-none values."
     return result
 """
+
+
+
+
+
+
+
+
+
+def all_are_equal_to(input_seq, example=None, equality_test_fun=operator.eq):
+    for item in input_seq:
+        if not equality_test_fun(example, item):
+            return False
+    return True
+assert all_are_equal_to([2,3], example=2) == False
+assert all_are_equal_to([], example=2) == True
+assert all_are_equal_to([1], example=2) == False
+
+
+def all_are_equal(input_seq, equality_test_fun=operator.eq):
+    first, inputGen = peek_first_and_iter(input_seq)
+    return all_are_equal_to(inputGen, example=first, equality_test_fun=equality_test_fun)
+    
+erb = get_exception_raised_by(all_are_equal)([])
+assert isinstance(erb, IndexError), repr(erb)
+assert all_are_equal("aaaaa")
+assert not all_are_equal("aaaba")
+del erb
+
+    
+def get_shared_value(input_seq, equality_test_fun=operator.eq):
+    result, inputGen = peek_first_and_iter(input_seq)
+    for i, item in enumerate(inputGen):
+        if not equality_test_fun(result, item):
+            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i, repr(item), repr(result)))
+    return result
+
+assert get_shared_value("aaaaa") == "a"
+assert_raises_instanceof(get_shared_value, AssuranceError)("aaaba")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def _base_default_to_exception_raised_by(fun_to_test, classify_exception=False):
     def inner(*args, **kwargs):
@@ -95,7 +217,7 @@ for testArg, desiredType in [([1,2,3], int), (5,TypeError), ([1,"2"], TypeError)
     testResult = default_to_exception_raised_by(sum)(testArg)
     if not type(testResult) == desiredType:
         assert False, (testArg, desiredType, testResult)
-    
+
 @default_to_exception_type_raised_by
 def testValueErrorA(val):
     if val < 0:
@@ -115,6 +237,17 @@ def assert_single_arg_fun_obeys_dict(fun_to_test, qanda_dict):
 assert_single_arg_fun_obeys_dict(str, {-1:"-1", 5:"5", complex(1,2):"(1+2j)"})
 assert default_to_exception_type_raised_by(assert_single_arg_fun_obeys_dict)(int, {"1":2, "3":4}) == AssertionError
 assert default_to_exception_type_raised_by(assert_single_arg_fun_obeys_dict)(int, {"a":2, "c":4}) == ValueError
+
+
+
+
+
+
+
+
+
+
+
 
 
 def test_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
@@ -141,7 +274,7 @@ def _assert_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLER
     
 def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
     head = "test_nearly_equal: debug: "
-    if isinstance(thing0, complex) and isinstance(thing1, complex):
+    if isinstance(thing0, (complex,float,int)) and isinstance(thing1, (complex,float,int)):
         result = test_complex_nearly_equal(thing0, thing1, error_tolerance=error_tolerance)
         if debug and not result:
             print(head + "failed in br0.")
@@ -151,7 +284,7 @@ def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, d
             if debug:
                 print(head + "lengths differ.")
             return False
-        result = all(test_nearly_equal(thing0[i], thing1[i], error_tolerance=error_tolerance) for i in range(max(len(thing0), len(thing1))))
+        result = all(test_nearly_equal(thing0[i], thing1[i], error_tolerance=error_tolerance, debug=debug) for i in range(max(len(thing0), len(thing1))))
         if debug and not result:
             print(head + "failed in br1.")
         return result
@@ -162,7 +295,7 @@ def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, d
         return result
 
 def assert_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
-    assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance, debug=True), "{} does not nearly equal {}.".format(repr(thing0), repr(thing1))
+    assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance, debug=True), "{} does not nearly equal {} with error tolerance {}.".format(repr(thing0), repr(thing1), repr(error_tolerance))
 
 
 
