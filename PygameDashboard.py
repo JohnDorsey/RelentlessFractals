@@ -222,9 +222,9 @@ class SimpleLapTimer:
 def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
     if not isinstance(nickname, str):
         raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
-        
+    
     if nickname in _persistent_info:
-        print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.")
+        print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.".format(repr(nickname)))
         include_lap = False
     else:
         _persistent_info[nickname] = {"lap_end_time": None}

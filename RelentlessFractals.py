@@ -33,6 +33,10 @@ from SegmentGeometry import find_left_min, lerp
 
 from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range
 
+import Trig
+sin, cos = (Trig.sin, Trig.cos) # short names for use only in compilation of mandel methods.
+
+
 
 testZip = zip("ab","cd")
 izip = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
@@ -130,24 +134,27 @@ def enforce_tuple_length(input_tuple, length, default=None):
 
 
 
-def to_safe_for_windows(pathstr):
+def to_portable(path_str):
     # https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file
-    # "<>:\"/\\|?*"
+    # windows forbidden: "<>:\"/\\|?*"
     # slashes are allowed because they are used for saving to a folder.
-    forbiddenDict = {"<":"Lss",">":"Gtr",":":"Cln","\"":"Dblqt","\\":"Bkslsh","|":"Vrtpipe","?":"Quemrk","*":"Astrsk"}
+    forbiddenDict = {
+        "<":"Lss", ">":"Gtr", ":":"Cln", "\"":"Dblqt", "\\":"Bkslsh", "|":"Vrtpipe", "?":"Quemrk", "*":"Astrsk", 
+        "=":"Eq", "'":"Sglqt", "!":"Exclmrk", "@":"Atsgn", "#":"Poundsgn", "$":"Dlrsgn", "%":"Prcntsgn",  "^":"Caret", "&":"Amprsnd",
+    }
     for forbiddenChar, replacementChar in forbiddenDict.items():
-        oldPathstr = pathstr
-        pathstr = pathstr.replace(forbiddenChar, replacementChar)
-        if pathstr != oldPathstr:
-            print("to_safe_for_windows: Warning: {} is not allowed in windows filenames, so it will be replaced with {} for portability.".format(repr(forbiddenChar), repr(replacementChar)))
-    return pathstr
+        oldPathStr = path_str
+        path_str = path_str.replace(forbiddenChar, replacementChar)
+        if path_str != oldPathStr:
+            print("to_portable: Warning: ~{} occurrences of {} will be replaced with {} for portability.".format(oldPathStr.count(forbiddenChar), repr(forbiddenChar), repr(replacementChar)))
+    return path_str
 
 
 @measure_time_nicknamed("save_surface_as", end="\n\n", include_lap=True)
 def save_surface_as(surface, name_prefix="", name=None):
     if name is None:
         name = "{}{}.png".format(time.monotonic(), str(surface.get_size()).replace(", ","x"))
-    usedName = to_safe_for_windows(name_prefix + name)
+    usedName = to_portable(OUTPUT_FOLDER + name_prefix + name)
     print("saving file {}.".format(usedName))
     pygame.image.save(surface, usedName)
     measure_time_nicknamed("garbage collection")(gc.collect)()
@@ -241,27 +248,28 @@ cannot work. modifies original even if deepcopies are made.
 _mandelMethodsSourceStrs={
         "c_to_mandel_itercount_fast":"""
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
-    z = ${z0}
+    ${init_formula}
     for iter_index in range(iter_limit):
         if abs(z) >= escape_radius:
             return iter_index
-        z = z**${exponent} + c
+        ${iter_formula}
     return None""",
     
         "c_to_mandel_journey":"""
 def c_to_mandel_journey(c):
-    z = ${z0}
+    ${init_formula}
     for iter_index in itertools.count():
         yield z
-        z = z**${exponent} + c""",
+        ${iter_formula}""",
         
     }
     
-def compile_mandel_method(method_name, z0="0+0j", exponent="2"):
+# z0="0+0j", exponent="2"
+def compile_mandel_method(method_name, init_formula=None, iter_formula=None):
     sourceStr = _mandelMethodsSourceStrs[method_name]
     assert sourceStr.count("def {}(".format(method_name)) == 1, "bad source code string for name {}!".format(method_name)
     
-    sourceStr = sourceStr.replace("${z0}", z0).replace("${exponent}", exponent)
+    sourceStr = sourceStr.replace("${init_formula}", init_formula).replace("${iter_formula}", iter_formula)
     
     exec(sourceStr)
     assert method_name in locals().keys(), "method name {} wasn't in locals! bad source code string?".format(method_name)
@@ -375,7 +383,7 @@ def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None
                 yield intersection
     
 def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
-    return gen_seg_seq_self_intersections(gen_track_previous_full(journey), intersection_fun=intersection_fun, gap_size=1)
+    return gen_seg_seq_self_intersections(gen_track_previous_full(journey, allow_waste=True), intersection_fun=intersection_fun, gap_size=1)
     
 assert_equal(list(gen_path_self_intersections([complex(0,0),complex(0,4),complex(2,2),complex(-2,2), complex(-2,3),complex(10,3)], intersection_fun=SegmentGeometry.segment_intersection)), [complex(0,2), complex(0,3),complex(1,3)])
 """
@@ -707,6 +715,8 @@ class GridSettings:
         
     def complex_to_item(self, data, complex_coord, centered=None):
         x, y = self.complex_to_whole(complex_coord, centered=centered)
+        if x < 0 or y < 0:
+            raise IndexError("negatives not allowed here.")
         return data[y][x]
         
     def iter_cell_whole_coords(self, range_descriptions=None, swap_iteration_order=False):
@@ -779,7 +789,7 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None, mandel_exponent=None, mandel_z0=None):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None, init_formula=None, iter_formula=None):
     print("do_buddhabrot started.")
     assert None not in (iter_limit, point_limit, escape_radius)
     assert escape_radius <= 256.0, "this may break segment intersections."
@@ -789,11 +799,13 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
-    output_name="bb(exp({})z0({}))_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(mandel_exponent, mandel_z0, camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    setSummaryStr = "bb(ini({})itr({}))_RallGincrBinci".format(init_formula, iter_formula)
+    viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
-    journeyFun = compile_mandel_method("c_to_mandel_journey", z0=mandel_z0, exponent=mandel_exponent)
+    journeyFun = compile_mandel_method("c_to_mandel_journey", init_formula=init_formula, iter_formula=iter_formula)
     
     
     def specializedDraw():
@@ -852,8 +864,6 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)]
-        if mandel_z0 == "0j":
-            assert constrainedJourney[0] == 0
         
         if len(constrainedJourney) >= iter_limit:
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
@@ -866,7 +876,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
             # journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
+            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
@@ -1200,7 +1210,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((4096, 4096))
+screen = pygame.display.set_mode((256, 256))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1210,7 +1220,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-
+OUTPUT_FOLDER = "outbox1/"
 
 
 
@@ -1219,8 +1229,11 @@ def main():
 
     #test_abberation([0], 0, 16384)
     # for biSup, iterLim, ptLim in [(1024)]
-    for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
-        do_buddhabrot(Camera(View(0+0j, 2+2j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=8, escape_radius=16.0, mandel_exponent="(c**(iter_index*{}))".format(steppedVal), mandel_z0="c")
+    # "((abs(c*0.25)+0.015625)**-1)"
+    # (1.75+0.5*sin(iter_index))
+    # for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
+    # for steppedVal in [0.125, 0.0625]:
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=4, escape_radius=256.0, init_formula="z=c", iter_formula="z=-z+complex(sin(z.real),sin(z.imag))**2+c")
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, output_interval_iters=1, count_scale=1, escape_radius=256.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)

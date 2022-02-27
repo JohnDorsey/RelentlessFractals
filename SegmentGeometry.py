@@ -292,6 +292,12 @@ def segments_intersect(seg0, seg1, extra_assertions=EXTRA_ASSERTIONS):
                     assert result, (seg0, seg1, testSegA, testSegB, testPt)
     return result
 
+"""
+NOTES:
+assertion in segment_intersection would fail for segments_intersect(((-0.2966114161032628-0.2740619308262666j), (-0.2882969411062747-0.3062392387437123j)), ((-0.3147963493571548-0.2036856055645212j), (-0.2253568005241774-0.5498197756520699j))). errorDistance=5.821903443632943e-12, t=0.5964912280701754, u=0.25877192982456143.
+additional information: seg0mightseg1=False seg1mightseg0=True (both should be true according to the results of this method.).
+"""
+
 # tests for segments_intersect come later.
 
 

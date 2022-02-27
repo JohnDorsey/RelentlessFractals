@@ -61,11 +61,14 @@ def gen_track_previous(input_seq):
 assert (list(gen_track_previous(range(5,10))) == [(None,5),(5,6),(6,7),(7,8),(8,9)])
         
         
-def gen_track_previous_full(input_seq):
+def gen_track_previous_full(input_seq, allow_waste=False):
     try:
         previousItem, inputGen = peek_first_and_iter(input_seq)
     except IndexError:
-        raise IndexError("can't fill! not enough items!") # this used to return None without error.
+        if allow_waste:
+            return
+        else:
+            raise IndexError("can't fill! not enough items!")
     for currentItem in inputGen:
         yield (previousItem, currentItem)
         previousItem = currentItem

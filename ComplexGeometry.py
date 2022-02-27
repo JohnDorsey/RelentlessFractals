@@ -343,6 +343,7 @@ def get_exclusive_top_right_quadrant_complex_angle(value):
 
     result = Trig.atan(value.imag/value.real)
     assert 0.0 <= result <= Trig.half_pi
+    # raise NotImplementedError("fix: sometimes answers angle of 0 or pi/2 when this should not be allowed")
     return result
 
 # test later.
@@ -351,19 +352,19 @@ def get_exclusive_top_right_quadrant_complex_angle(value):
 def get_exclusive_top_half_complex_angle(value):
     assert value.imag > 0, "{} is not in the top half.".format(value)
     if value.real == 0:
-        return Trig.half_pi
+        return Trig.half_pi # there is more than one way to return pi/2 in this method, even though inputs with imag==0 are not allowed. Large number rounding errors are okay.
     else:
         if value.real < 0:
             prevQuadPoint = div_complex_by_i(value)
             assert prevQuadPoint.real > 0
             assert prevQuadPoint.imag > 0
             result = get_exclusive_top_right_quadrant_complex_angle(prevQuadPoint)
-            assert 0.0 < result < Trig.half_pi
+            assert 0.0 <= result <= Trig.half_pi
             return result + Trig.half_pi
         else:
             assert value.real > 0
             result = get_exclusive_top_right_quadrant_complex_angle(value)
-            assert 0.0 < result < Trig.half_pi
+            assert 0.0 <= result <= Trig.half_pi
             return result
     
 for theta in float_range(0.1, Trig.pi-0.25, 0.01):
@@ -393,13 +394,18 @@ def get_complex_angle(point):
             assert oppositePoint.imag > 0
             oppositePointAngle = get_exclusive_top_half_complex_angle(oppositePoint)
             assert_equal(type(oppositePointAngle), float)
-            assert 0.0 < oppositePointAngle < Trig.pi
-            return Trig.pi + oppositePointAngle
+            assert 0.0 <= oppositePointAngle <= Trig.pi
+            result = Trig.pi + oppositePointAngle
         else:
             assert point.imag > 0
             pointAngle = get_exclusive_top_half_complex_angle(point)
-            assert 0.0 < pointAngle < Trig.pi
-            return pointAngle
+            assert 0.0 <= pointAngle <= Trig.pi
+            result = pointAngle
+        if result == 0.0 or result == Trig.tau: # if rounding error:
+            return SpecialAnswer.ZERO_MOD_TAU
+        else:
+            assert 0.0 < result < Trig.tau
+            return result
     assert False
 
 lastThetaResult = None
