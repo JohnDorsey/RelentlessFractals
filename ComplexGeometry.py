@@ -342,7 +342,7 @@ def get_exclusive_top_right_quadrant_complex_angle(value):
     assert value.imag > 0 and value.real > 0, "{} is not in the top right quadrant.".format(value)
 
     result = Trig.atan(value.imag/value.real)
-    assert 0.0 <= result <= Trig.pi/2.0
+    assert 0.0 <= result <= Trig.half_pi
     return result
 
 # test later.
@@ -407,7 +407,7 @@ for theta in float_range(0.1, Trig.tau+0.2, 0.01):
     thetaResult = get_shared_value((get_complex_angle(complex(Trig.cos(theta)*s, Trig.sin(theta)*s)) for s in [0.1, 1, 10, 1000]), equality_test_fun=test_nearly_equal)
     assert thetaResult != lastThetaResult
     convertedTheta = (theta % Trig.tau)
-    print((thetaResult, theta, convertedTheta, thetaResult/Trig.half_pi, theta/Trig.half_pi, convertedTheta/Trig.half_pi))
+    # print((thetaResult, theta, convertedTheta, thetaResult/Trig.half_pi, theta/Trig.half_pi, convertedTheta/Trig.half_pi))
     assert_nearly_equal(thetaResult/Trig.half_pi, convertedTheta/Trig.half_pi)
     assert_nearly_equal(thetaResult, convertedTheta)
     assert isinstance(thetaResult, float)

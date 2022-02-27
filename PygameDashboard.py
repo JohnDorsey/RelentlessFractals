@@ -200,7 +200,60 @@ class MonitoredValue:
     def get_synced(self):
         return self.synced_value
         
+
+
+
+class SimpleLapTimer:
+    def __init__(self):
+        self.time_fun = time.monotonic
+        self.last_press_time = None
+    def peek(self):
+        if self.last_press_time is None:
+            return None
+        return self.time_fun() - self.last_press_time
+    def press(self):
+        result = self.peek()
+        self.last_press_time = self.time_fun()
+        return result
+
+
+
+
+def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
+    if not isinstance(nickname, str):
+        raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
         
+    if nickname in _persistent_info:
+        print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.")
+        include_lap = False
+    else:
+        _persistent_info[nickname] = {"lap_end_time": None}
+        
+    toMStr = lambda val: "{} m".format(round(val/60.0, ndigits=ndigits))
+    toHStr = lambda val: "{} h".format(round(val/60.0/60.0, ndigits=ndigits))
+    toSMHStr = lambda val: "{} s ({})({})".format(val, toMStr(val), toHStr(val))
+    
+    def measure_time_nicknamed_inner(input_fun):
+        
+        def measure_time_nicknamed_inner_inner(*args, **kwargs):
+            actionStartTime = time.monotonic()
+            result = input_fun(*args, **kwargs)
+            actionEndTime = time.monotonic()
+            print("{} took {}.".format(nickname, toSMHStr(actionEndTime-actionStartTime))
+                +((" lap took: " + ("{}.".format(toSMHStr(actionEndTime-_persistent_info[nickname]["lap_end_time"])) if _persistent_info[nickname]["lap_end_time"] is not None else "unknown.") ) if include_lap else ""), end=end
+            )
+            if include_lap:
+                _persistent_info[nickname]["lap_end_time"] = actionEndTime
+            return result
+        return measure_time_nicknamed_inner_inner
+        
+    return measure_time_nicknamed_inner
+
+
+
+
+
+
         
 
 class SimpleRateLimiter:

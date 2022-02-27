@@ -4,9 +4,11 @@
 todo:
   -visual debugger for geometry.
   -order intersection points on a segment by time (actually distance from start of seg).
-  -fixed point geometry code.
-  -fix polar space intersections.
+  -fixed-point geometry calculations.
   -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
+  
+observations:
+  -geometry overhaul (25 Feb 2022) brought polarcross from 14x slower than rectcross to 9.6x, and disabling assertions brings it to 7x.
 """
 
 
@@ -43,6 +45,8 @@ del testZip, testZip2
 
 
 import PygameDashboard
+from PygameDashboard import measure_time_nicknamed
+
 
 def THIS_MODULE_EXEC(string):
     exec(string)
@@ -71,19 +75,7 @@ def shape_of(data_to_test):
     return result
     
     
-def measure_time_nicknamed(nickname, ndigits=2): # copied from GeodeFractals/photo.py. slightly modified.
-    if not isinstance(nickname, str):
-        raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
-    def measure_time_nicknamed_inner(input_fun):
-        def measure_time_nicknamed_inner_inner(*args, **kwargs):
-            startTime = time.monotonic()
-            result = input_fun(*args, **kwargs)
-            endTime = time.monotonic()
-            totalTime = endTime-startTime
-            print("{} took {} s ({} m)({} h).".format(nickname, totalTime, round(totalTime/60.0, ndigits=ndigits), round(totalTime/60.0/60.0, ndigits=ndigits)))
-            return result
-        return measure_time_nicknamed_inner_inner
-    return measure_time_nicknamed_inner
+
     
     
     
@@ -137,11 +129,25 @@ def enforce_tuple_length(input_tuple, length, default=None):
     
 
 
-@measure_time_nicknamed("save_surface_as")
+
+def to_safe_for_windows(pathstr):
+    # https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file
+    # "<>:\"/\\|?*"
+    # slashes are allowed because they are used for saving to a folder.
+    forbiddenDict = {"<":"Lss",">":"Gtr",":":"Cln","\"":"Dblqt","\\":"Bkslsh","|":"Vrtpipe","?":"Quemrk","*":"Astrsk"}
+    for forbiddenChar, replacementChar in forbiddenDict.items():
+        oldPathstr = pathstr
+        pathstr = pathstr.replace(forbiddenChar, replacementChar)
+        if pathstr != oldPathstr:
+            print("to_safe_for_windows: Warning: {} is not allowed in windows filenames, so it will be replaced with {} for portability.".format(repr(forbiddenChar), repr(replacementChar)))
+    return pathstr
+
+
+@measure_time_nicknamed("save_surface_as", end="\n\n", include_lap=True)
 def save_surface_as(surface, name_prefix="", name=None):
     if name is None:
         name = "{}{}.png".format(time.monotonic(), str(surface.get_size()).replace(", ","x"))
-    usedName = name_prefix + name
+    usedName = to_safe_for_windows(name_prefix + name)
     print("saving file {}.".format(usedName))
     pygame.image.save(surface, usedName)
     measure_time_nicknamed("garbage collection")(gc.collect)()
@@ -219,32 +225,61 @@ def gen_assuredly_ascending(input_seq):
 
 
 
+"""
+def mutate_method_consts(fun_to_mutate, replacement_dict):
+    originalConsts = fun_to_mutate.__code__.co_consts
+    for key in replacement_dict.keys():
+        assert originalConsts.count(key) == 1, (key, fun_to_mutate, originalConsts)
+    fun_to_mutate.__code__ = fun_to_mutate.__code__.replace(co_consts=tuple((replacement_dict[item] if item in replacement_dict else item) for item in originalConsts))
+cannot work. modifies original even if deepcopies are made.
+"""
 
+
+
+
+
+_mandelMethodsSourceStrs={
+        "c_to_mandel_itercount_fast":"""
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
-    z = 0+0j
-    for i in range(iter_limit):
+    z = ${z0}
+    for iter_index in range(iter_limit):
         if abs(z) >= escape_radius:
-            return i
-        z = z**2 + c
-    return None
-
-
+            return iter_index
+        z = z**${exponent} + c
+    return None""",
+    
+        "c_to_mandel_journey":"""
 def c_to_mandel_journey(c):
+    z = ${z0}
+    for iter_index in itertools.count():
+        yield z
+        z = z**${exponent} + c""",
+        
+    }
+    
+def compile_mandel_method(method_name, z0="0+0j", exponent="2"):
+    sourceStr = _mandelMethodsSourceStrs[method_name]
+    assert sourceStr.count("def {}(".format(method_name)) == 1, "bad source code string for name {}!".format(method_name)
+    
+    sourceStr = sourceStr.replace("${z0}", z0).replace("${exponent}", exponent)
+    
+    exec(sourceStr)
+    assert method_name in locals().keys(), "method name {} wasn't in locals! bad source code string?".format(method_name)
+    return locals()[method_name]
+        
+
+
+"""
+def c_to_mandel_journey_OLD(c):
     z = 0+0j
     while True:
         yield z
         z = z**2 + c
-        
-        
-def c_must_be_in_mandelbrot(c):
-    circles = [(complex(-1.0, 0.0), 0.24), (complex(0.5, 0.0),2.45)]
-    for circle in circles:
-        if abs(c - circle[0]) < circle[1]:
-            return True
-    return False
-        
+"""
+
         
 def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
+    raise NotImplementedError("should probably be moved to the source strings.")
     z = 0+0j
     yield z
     
@@ -255,6 +290,18 @@ def c_to_mandel_journey_abberated_by_addition(c, abberation_seq):
     while True:
         z = z**2 + c
         yield z
+        
+        
+"""
+def c_must_be_in_mandelbrot(c):
+    circles = [(complex(-1.0, 0.0), 0.24), (complex(0.5, 0.0),2.45)]
+    for circle in circles:
+        if abs(c - circle[0]) < circle[1]:
+            return True
+    return False
+"""
+        
+
         
         
         
@@ -732,7 +779,7 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None, mandel_exponent=None, mandel_z0=None):
     print("do_buddhabrot started.")
     assert None not in (iter_limit, point_limit, escape_radius)
     assert escape_radius <= 256.0, "this may break segment intersections."
@@ -742,11 +789,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
-    output_name="bb_polarcross_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
+    output_name="bb(exp({})z0({}))_RallGincrBinci_{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count_{}_".format(mandel_exponent, mandel_z0, camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale, COLOR_SETTINGS_SUMMARY_STR)
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
-    journeyFun = c_to_mandel_journey
+    journeyFun = compile_mandel_method("c_to_mandel_journey", z0=mandel_z0, exponent=mandel_exponent)
+    
     
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
@@ -754,7 +802,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
     pixelWidth = camera.screen_settings.cell_size.real
-    assert pixelWidth < 0.1, "is the screen really that small in resolution?"
+    if not pixelWidth < 0.1:
+        print("Wow, are pixels supposed to be that small?")
     
     visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
     
@@ -803,7 +852,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
                 
         journey = journeyFun(seed)
         constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)]
-        assert constrainedJourney[0] == complex(0,0)
+        if mandel_z0 == "0j":
+            assert constrainedJourney[0] == 0
         
         if len(constrainedJourney) >= iter_limit:
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
@@ -815,8 +865,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
-            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
+            # journeySelfIntersections = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
+            # doubleJourneySelfIntersections = gen_path_self_intersections(journeySelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection)
             
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
@@ -841,7 +891,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
             zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
             """
             
-            limitedVisitPointGen = itertools.islice(journeySelfIntersections, 0, point_limit)
+            limitedVisitPointGen = itertools.islice(constrainedJourney, 0, point_limit)
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -1150,7 +1200,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((128, 128))
+screen = pygame.display.set_mode((4096, 4096))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1169,7 +1219,8 @@ def main():
 
     #test_abberation([0], 0, 16384)
     # for biSup, iterLim, ptLim in [(1024)]
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=16384, point_limit=16384, count_scale=1, escape_radius=16.0)
+    for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
+        do_buddhabrot(Camera(View(0+0j, 2+2j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=256, point_limit=256, count_scale=8, escape_radius=16.0, mandel_exponent="(c**(iter_index*{}))".format(steppedVal), mandel_z0="c")
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, output_interval_iters=1, count_scale=1, escape_radius=256.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
@@ -1186,5 +1237,15 @@ print("done testing.")
 
 if __name__ == "__main__":
     main()
+    print("""
+                   # #
+     ##            # #        ##  #
+    #    ### ###  ## ##      #    #
+    # ## # # # # # # # # # # ###  #
+    #  # ### ###  ## ##   #  #     
+     ##                 ##    ##  #
+     
+     
+    """)
 
 
