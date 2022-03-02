@@ -2,10 +2,16 @@
 
 """
 todo:
-  -visual debugger for geometry.
+  -testing:
+    -improve extra assertions for segment_intersection with point-on-line testing.
+    -visual debugger for geometry.
+    -replace special answer enum.Enums with something that's easier to debug.
+    -replace fuzz/defuzz testing with testing that uses only fuzzing (that is, check if fun(fuzz(inputs))==fuzz(fun(inputs))).
+  -lap counter. improved lap timer.
   -order intersection points on a segment by time (actually distance from start of seg).
   -fixed-point geometry calculations.
   -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
+  
   
 observations:
   -geometry overhaul (25 Feb 2022) brought polarcross from 14x slower than rectcross to 9.6x, and disabling assertions brings it to 7x.
@@ -31,10 +37,12 @@ from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get
 import SegmentGeometry
 from SegmentGeometry import find_left_min, lerp
 
+import ComplexGeometry
+
 from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range
 
 import Trig
-sin, cos = (Trig.sin, Trig.cos) # short names for use only in compilation of mandel methods.
+sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
 
 
 
@@ -250,31 +258,48 @@ _mandelMethodsSourceStrs={
 def c_to_mandel_itercount_fast(c, iter_limit, escape_radius):
     ${init_formula}
     for iter_index in range(iter_limit):
-        if abs(z) >= escape_radius:
+        if ${esc_test}:
             return iter_index
         ${iter_formula}
     return None""",
     
-        "c_to_mandel_journey":"""
-def c_to_mandel_journey(c):
+        "c_to_escstop_mandel_journey":"""
+def c_to_escstop_mandel_journey(c):
     ${init_formula}
     for iter_index in itertools.count():
         yield z
+        if ${esc_test}:
+            return
         ${iter_formula}""",
         
     }
     
 # z0="0+0j", exponent="2"
-def compile_mandel_method(method_name, init_formula=None, iter_formula=None):
+def compile_mandel_method(method_name, init_formula=None, iter_formula=None, esc_test=None):
     sourceStr = _mandelMethodsSourceStrs[method_name]
     assert sourceStr.count("def {}(".format(method_name)) == 1, "bad source code string for name {}!".format(method_name)
     
-    sourceStr = sourceStr.replace("${init_formula}", init_formula).replace("${iter_formula}", iter_formula)
+    sourceStr = sourceStr.replace("${init_formula}", init_formula).replace("${iter_formula}", iter_formula).replace("${esc_test}", esc_test)
     
     exec(sourceStr)
     assert method_name in locals().keys(), "method name {} wasn't in locals! bad source code string?".format(method_name)
     return locals()[method_name]
         
+
+def gen_embed_exceptions(input_seq, exception_types):
+    try:
+        for item in input_seq:
+            yield item
+    except exception_types as e:
+        yield e
+        return
+        
+def gen_suppress_exceptions(input_seq, exception_types):
+    try:
+        for item in input_seq:
+            yield item
+    except exception_types as e:
+        return
 
 
 """
@@ -310,12 +335,9 @@ def c_must_be_in_mandelbrot(c):
 """
         
 
+      
         
-        
-        
-
-        
-
+"""
 def gen_constrain_journey(journey, iter_limit, escape_radius):
     # assert escape_radius <= 256, "this may break seg intersections."
     for i, point in enumerate(journey):
@@ -325,7 +347,7 @@ def gen_constrain_journey(journey, iter_limit, escape_radius):
         if abs(point) > escape_radius:
             return
     assert False, "incomplete journey."
-
+"""
 
 
 
@@ -714,7 +736,10 @@ class GridSettings:
         return (int(complexOfCell.real), int(complexOfCell.imag))
         
     def complex_to_item(self, data, complex_coord, centered=None):
-        x, y = self.complex_to_whole(complex_coord, centered=centered)
+        try:
+            x, y = self.complex_to_whole(complex_coord, centered=centered)
+        except OverflowError:
+            raise IndexError("near-infinity can never be a list index!")
         if x < 0 or y < 0:
             raise IndexError("negatives not allowed here.")
         return data[y][x]
@@ -789,23 +814,23 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, escape_radius=None, init_formula=None, iter_formula=None):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, iter_formula=None, esc_test=None, esc_exceptions=None, buddha_type=None, banded=True):
+    SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
-    assert None not in (iter_limit, point_limit, escape_radius)
-    assert escape_radius <= 256.0, "this may break segment intersections."
+    assert None not in (iter_limit, point_limit, init_formula, iter_formula, esc_test, esc_exceptions, buddha_type)
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
-    setSummaryStr = "bb(ini({})itr({}))_RallGincrBinci".format(init_formula, iter_formula)
-    viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}ptlim{}biSuper{}count".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    setSummaryStr = "{}(ini({})itr({})esc({}))_RallGincrBinci".format(buddha_type, init_formula, iter_formula, esc_test)
+    viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSuper{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
-    journeyFun = compile_mandel_method("c_to_mandel_journey", init_formula=init_formula, iter_formula=iter_formula)
+    escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", init_formula=init_formula, iter_formula=iter_formula, esc_test=esc_test)
     
     
     def specializedDraw():
@@ -855,17 +880,30 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     for i, (x, y, seed) in enumerate(cellDescriptionGen):
         
         if (x==0):
-            if (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
+            if banded and (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
+                SET_LIVE_STATUS("drawing...")
                 specializedDraw()
+                SET_LIVE_STATUS("saving...")
                 save_screenshot_as(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.seed_settings.grid_size[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
-            else:
-                if CAPTION_RATE_LIMITER.get_judgement():
-                    SET_LIVE_STATUS("y={}".format(y))
+                SET_LIVE_STATUS("saved...")
+            if CAPTION_RATE_LIMITER.get_judgement():
+                SET_LIVE_STATUS("y={}".format(y))
                 
-        journey = journeyFun(seed)
-        constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)]
+        # old: journey = journeyFun(seed); constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)] ...
+        constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), 0, iter_limit+1), esc_exceptions))
         
-        if len(constrainedJourney) >= iter_limit:
+        if buddha_type == "jbb":
+            seedIsInSet = True
+        else:
+            seedIsInSet = not (len(constrainedJourney) >= iter_limit)
+            if buddha_type == "bb":
+                pass
+            elif buddha_type == "abb":
+                seedIsInSet = not seedIsInSet
+            else:
+                assert False, "invalid buddha type {}.".format(buddha_type)
+        
+        if not seedIsInSet:
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
@@ -929,6 +967,12 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, esca
     print("doing final screenshot...")
     save_screenshot_as(name_prefix=output_name)
     print("do_buddhabrot done.")
+    SET_LIVE_STATUS("done.")
+
+
+
+
+
 
 
 
@@ -1193,7 +1237,7 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 def SET_LIVE_STATUS(status_text):
     try:
-        pygame.display.set_caption(status_text)
+        pygame.display.set_caption("z. " + status_text)
     except Exception as e:
         print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
 
@@ -1210,7 +1254,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((256, 256))
+screen = pygame.display.set_mode((4096, 4096))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1220,7 +1264,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "outbox1/"
+OUTPUT_FOLDER = "outbox2/"
 
 
 
@@ -1231,9 +1275,10 @@ def main():
     # for biSup, iterLim, ptLim in [(1024)]
     # "((abs(c*0.25)+0.015625)**-1)"
     # (1.75+0.5*sin(iter_index))
+    # complex({}*sin(z.imag+c.real), tan(z.real+c.imag))+c
     # for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
-    # for steppedVal in [0.125, 0.0625]:
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=4, escape_radius=256.0, init_formula="z=c", iter_formula="z=-z+complex(sin(z.real),sin(z.imag))**2+c")
+    # for steppedVal in ComplexGeometry.float_range(1, 8, 0.03125):
+    do_buddhabrot(Camera(View(0+0j, 16+16j), screen_size=screen.get_size(), bidirectional_supersampling=4), iter_limit=256, point_limit=256, count_scale=2, init_formula="w,z=c,c", iter_formula="w,z=w**z-c,z**w+c", esc_test="(abs(w)>16)or(abs(z)>16)", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True)
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, output_interval_iters=1, count_scale=1, escape_radius=256.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
@@ -1262,3 +1307,4 @@ if __name__ == "__main__":
     """)
 
 
+# ready to go

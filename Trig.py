@@ -28,6 +28,12 @@ def cos(value):
     quadSubValue = min(halfSubValue, pi-halfSubValue)
     return lousy_cos(quadSubValue) * (-1 if halfSubValue > half_pi else 1)
     
+def tan(value):
+    try:
+        return sin(value)/cos(value)
+    except ZeroDivisionError:
+        return math.inf
+    
 for i in range(-1000,1000,1):
     v = i / 100.0
     assert_less(abs(sin(v)-lousy_sin(v)), FUN_REPLACEMENT_ERROR_TOLERANCE)
