@@ -219,6 +219,7 @@ assert_equal(shape_of(construct_data([5,6,7])), [5,6,7])
 
 
 def fill_data(data, fill_value):
+    # print("fix fill data")
     assert isinstance(data, list)
     for i in range(len(data)):
         if isinstance(data[i], list):
@@ -227,7 +228,7 @@ def fill_data(data, fill_value):
             raise TypeError("tuples can't be processed!")
         else:
             if not type(data[i]) == type(fill_value):
-                raise NotImplementedError("type can't be changed!")
+                raise NotImplementedError("type can't be changed from {} to {}!".format(repr(type(data[i])), repr(type(fill_value))))
             data[i] = fill_value
 
 
@@ -1096,25 +1097,47 @@ def get_four_neighbor_items(matrix, x, y):
     return [matrix[neighborY][neighborX] for neighborX,neighborY in ((x, y-1), (x+1,y), (x,y+1), (-x, y))]
 
 
+"""
+class Dummies(Enum):
+    NOT_TRACKED = "not_tracked"
+"""
 
 
+def summon_cactus(message, cacti=dict()):
+    if message in cacti:
+        return cacti[message]
+    else:
+        cacti[message] = type(message, (), dict())()
+        if len(cacti) >= 64 and (math.log(len(cacti),2) % 1.0 == 0.0):
+            print("summon_cactus: warning: {} unique cacti sure is a lot. Is memory being wasted by their inadvisable mass-production? If not, adjust the warning threshold.".format(len(cacti)))
+        return cacti[message]
+        
+
+NotTracked = summon_cactus("NotTracked")
+
+def clamp_positive(val):
+    return val if val >= 0 else 0
+    
 
 @measure_time_nicknamed("do_panel_buddhabrot")
 def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb"):
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
+    assert blank_on_output, "not ready yet? also remove this assertion in loop body if ready, to avoid a disappointing crash after panel init!"
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
     # outputColorSummary = "top(RguestpaircmidptbothinsetGoneinsetBneitherinset)bottom(endpt)"
     # neighborPathSimultaneousCross
-    setSummaryStr = "panel_{}_4NeighborZShareChooseNearestToC_RallGincrBinci".format(buddhabrot_set_type)
+    # 4NeighborZShareChooseNearestToC 4NeighborZShareChooseRandom
+    setSummaryStr = "panel_{}_zpos(RdisttocGrBi)".format(buddhabrot_set_type)
     viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSuper{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
     print("creating visitCountMatrix...")
-    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
-    assert tuple(shape_of(visitCountMatrix)) == camera.screen_settings.grid_size[::-1]+(3,)
+    
+    screenSpaceHomeMatrix, visitCountMatrix = (construct_data(camera.screen_settings.grid_size[::-1], default_value=[count_scale*0, count_scale*0, count_scale*0]), summon_cactus("visitCountMatrix_is_disabled."))
+    # assert tuple(shape_of(visitCountMatrix)) == camera.screen_settings.grid_size[::-1]+(3,)
     
     
     def pointToVisitCountMatrixCell(point): # DUPLICATE CODE  DO NOT MODIFY
@@ -1130,15 +1153,15 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
         drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
     
     
-    def specializedDraw():
-        draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-    def specializedDrawAndScreenshot(name_prefix=None):
+    def specializedDraw(inputMatrix):
+        draw_squished_ints_to_screen(inputMatrix, access_order="yxc")
+    def specializedDrawAndScreenshot(inputMatrix, name_prefix=None):
         assert name_prefix is not None
-        specializedDraw()
+        specializedDraw(inputMatrix)
         save_screenshot_as(name_prefix=name_prefix)
-    def blankIfNeeded():
+    def blankIfNeeded(inputMatrix):
         if blank_on_output:
-            fill_data(visitCountMatrix, 0)
+            fill_data(inputMatrix, count_scale*0)
     
     panel = create_panel(camera.seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False)
     
@@ -1151,34 +1174,46 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     for iter_index in range(0, iter_limit):
     
         # SHOW
+        SET_LIVE_STATUS("n={}".format(iter_index))
         if (iter_index % output_interval_iters) == 0:
-            specializedDrawAndScreenshot(name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
-            blankIfNeeded()
+            specializedDrawAndScreenshot(screenSpaceHomeMatrix, name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
+            blankIfNeeded(screenSpaceHomeMatrix)
             assert blank_on_output, "not ready yet?"
     
         # ITERATE
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if panelCell[i_CURRENT_Z] is not None:
-                panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED],)*2
+                panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED])
                 if abs(panelCell[i_CURRENT_Z]) > escape_radius:
                     panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, None)
+        """
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if panelCell[i_CURRENT_Z] is not None:
                 try:
                     neighboringActivePanelCellZVals = [panelCell[i_PREVIOUS_Z]] + [item[i_PREVIOUS_Z] for item in get_four_neighbor_items(panel, x, y) if item[i_PREVIOUS_Z] is not None]
                 except IndexError:
                     continue
-                indexClosestToHome, _ = find_left_min(abs(val-panelCell[i_SEED]) for val in neighboringActivePanelCellZVals)
-                panelCell[i_CURRENT_Z] = neighboringActivePanelCellZVals[indexClosestToHome]
+                # indexClosestToHome, _ = find_left_min(abs(val-panelCell[i_SEED]) for val in neighboringActivePanelCellZVals)
+                
+                panelCell[i_CURRENT_Z] = random.choice(neighboringActivePanelCellZVals)
+        """
+        
                     
-        # DRAW        
+        # DRAW
+        v256ovrScrDiag = 256.0/abs(camera.view.size)
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if y in (0, len(panel)-1) or x in (0,len(panel[0])-1):
                 continue
             if panelCell[i_CURRENT_Z] is None:
                 continue
+            if not panelCell[i_ISINSET]:
+                continue
             # neighboringPanelCells = get_four_neighbor_items(panel, x, y)
-            drawPointUsingComparison(mainPoint=panelCell[i_CURRENT_Z], comparisonPoint=panelCell[i_SEED])
+            # drawPointUsingComparison(mainPoint=panelCell[i_CURRENT_Z], comparisonPoint=panelCell[i_SEED])
+            itemToEdit = camera.screen_settings.complex_to_item(screenSpaceHomeMatrix, panelCell[i_SEED], centered=False)
+            
+            itemToEdit[0], itemToEdit[1], itemToEdit[2] = (abs(panelCell[i_CURRENT_Z]-panelCell[i_SEED])*v256ovrScrDiag, clamp_positive(panelCell[i_CURRENT_Z].real*v256ovrScrDiag), clamp_positive(panelCell[i_CURRENT_Z].imag*v256ovrScrDiag))
+            
             """
             # neighborPathSimultaneousCross:
             for neighboringPanelCell in neighboringPanelCells:
@@ -1222,8 +1257,8 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
             hotel.clear()
         """
                 
-    specializedDrawAndScreenshot(name_prefix=output_name)
-    blankIfNeeded()
+    specializedDrawAndScreenshot(screenSpaceHomeMatrix, name_prefix=output_name)
+    blankIfNeeded(screenSpaceHomeMatrix)
                 
                 
                 
@@ -1290,7 +1325,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((256, 256))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1300,7 +1335,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "outbox3/"
+OUTPUT_FOLDER = "outbox4/"
 
 
 
@@ -1314,8 +1349,9 @@ def main():
     # complex({}*sin(z.imag+c.real), tan(z.real+c.imag))+c
     # for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
     # for steppedVal in ComplexGeometry.float_range(1, 8, 0.03125):
-    # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=4), iter_limit=1024, point_limit=1024, count_scale=1, init_formula="z=0j", iter_formula="z=z**2+((-1)**n)*c", esc_test="abs(z)>16", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True)
-    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=4), iter_limit=256, output_interval_iters=1, count_scale=4, escape_radius=256.0)
+    # z=z**2+((-1)**n)*c
+    # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=2, init_formula="z=0j", iter_formula="z=z*z+c", esc_test="abs(z)>16", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True)
+    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=256.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
