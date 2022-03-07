@@ -1,21 +1,6 @@
 #!/usr/bin/python3
 
-"""
-todo:
-  -testing:
-    -improve extra assertions for segment_intersection with point-on-line testing.
-    -visual debugger for geometry.
-    -replace special answer enum.Enums with something that's easier to debug.
-    -replace fuzz/defuzz testing with testing that uses only fuzzing (that is, check if fun(fuzz(inputs))==fuzz(fun(inputs))).
-  -lap counter. improved lap timer.
-  -order intersection points on a segment by time (actually distance from start of seg).
-  -fixed-point geometry calculations.
-  -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
-  
-  
-observations:
-  -geometry overhaul (25 Feb 2022) brought polarcross from 14x slower than rectcross to 9.6x, and disabling assertions brings it to 7x.
-"""
+
 
 
 
@@ -43,7 +28,7 @@ from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_prev
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
-
+cpx=complex
 
 
 testZip = zip("ab","cd")
@@ -146,9 +131,16 @@ def to_portable(path_str):
     # https://docs.microsoft.com/en-us/windows/win32/fileio/naming-a-file
     # windows forbidden: "<>:\"/\\|?*"
     # slashes are allowed because they are used for saving to a folder.
+    """
     forbiddenDict = {
         "<":"Lss", ">":"Gtr", ":":"Cln", "\"":"Dblqt", "\\":"Bkslsh", "|":"Vrtpipe", "?":"Quemrk", "*":"Astrsk", 
         "=":"Eq", "'":"Sglqt", "!":"Exclmrk", "@":"Atsgn", "#":"Poundsgn", "$":"Dlrsgn", "%":"Prcntsgn",  "^":"Caret", "&":"Amprsnd",
+    }
+    """
+    forbiddenDict = {
+        "<":"LS", ">":"GR", ":":"CN", "\"":"DQ", "\\":"BS", "|":"VP", "?":"QM", "*":"AK", 
+        "=":"EQ", "'":"SQ", "!":"XM", "@":"AT", "#":"HS", "$":"DS", "%":"PC",  "^":"CT", "&":"AP",
+        ";":"SN", "~":"TD", "[":"LB", "]":"RB", "{":"LC", "}":"RC",
     }
     for forbiddenChar, replacementChar in forbiddenDict.items():
         oldPathStr = path_str
@@ -161,9 +153,12 @@ def to_portable(path_str):
 @measure_time_nicknamed("save_surface_as", end="\n\n", include_lap=True)
 def save_surface_as(surface, name_prefix="", name=None):
     if name is None:
-        name = "{}{}.png".format(time.monotonic(), str(surface.get_size()).replace(", ","x"))
+        size = surface.get_size()
+        sizeStr = str(size).replace(", ","x") if (size[0] != size[1]) else "({}x)".format(size[0])
+        name = "{}{}.png".format(round(time.monotonic(), ndigits=1), sizeStr)
     usedName = to_portable(OUTPUT_FOLDER + name_prefix + name)
     print("saving file {}.".format(usedName))
+    assert usedName.endswith(".png")
     pygame.image.save(surface, usedName)
     measure_time_nicknamed("garbage collection")(gc.collect)()
     #print("{} unreachable objects.".format())
@@ -268,7 +263,7 @@ def c_to_mandel_itercount_fast(c, iter_limit):
 def c_to_escstop_mandel_journey(c):
     ${init_formula}
     for n in itertools.count():
-        yield z
+        yield ${yield_formula}
         if ${esc_test}:
             return
         ${iter_formula}""",
@@ -276,11 +271,11 @@ def c_to_escstop_mandel_journey(c):
     }
     
 # z0="0+0j", exponent="2"
-def compile_mandel_method(method_name, init_formula=None, iter_formula=None, esc_test=None):
+def compile_mandel_method(method_name, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None):
     sourceStr = _mandelMethodsSourceStrs[method_name]
     assert sourceStr.count("def {}(".format(method_name)) == 1, "bad source code string for name {}!".format(method_name)
     
-    sourceStr = sourceStr.replace("${init_formula}", init_formula).replace("${iter_formula}", iter_formula).replace("${esc_test}", esc_test)
+    sourceStr = sourceStr.replace("${init_formula}", init_formula).replace("${yield_formula}", yield_formula).replace("${esc_test}", esc_test).replace("${iter_formula}", iter_formula)
     
     exec(sourceStr)
     assert method_name in locals().keys(), "method name {} wasn't in locals! bad source code string?".format(method_name)
@@ -295,6 +290,7 @@ def gen_embed_exceptions(input_seq, exception_types):
         yield e
         return
         
+
 def gen_suppress_exceptions(input_seq, exception_types):
     try:
         for item in input_seq:
@@ -524,6 +520,7 @@ def gen_track_decaying_mean(input_seq, feedback=None):
 
 
 def gen_path_seg_lerps(input_seq, t=None):
+    raise NotImplementedError("tests needed!")
     assert 0.0 <= t <= 1.0
     for pointA, pointB in gen_track_previous_full(input_seq):
         yield lerp(pointA, pointB, t)
@@ -535,6 +532,7 @@ def gen_path_seg_multi_lerps(input_seq, t_seq):
 """
 
 def gen_path_seg_multi_lerps(input_seq, t_list=None): # could easily be faster with a multi lerp method.
+    raise NotImplementedError("tests needed!")
     assert isinstance(t_list, (tuple, list))
     # assert all(0.0 <= t <= 1.0 for t in t_list)
     for pointA, pointB in gen_track_previous_full(input_seq):
@@ -815,29 +813,29 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, iter_formula=None, esc_test=None, esc_exceptions=None, buddha_type=None, banded=True):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None):
     SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
-    assert None not in (iter_limit, point_limit, init_formula, iter_formula, esc_test, esc_exceptions, buddha_type)
+    assert None not in (iter_limit, point_limit, init_formula, yield_formula, esc_test, iter_formula, esc_exceptions, buddha_type, banded)
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
-    setSummaryStr = "{}(ini({})itr({})esc({}))_RallGincrBinci".format(buddha_type, init_formula, iter_formula, esc_test)
-    viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSuper{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula)
+    viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
-    escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", init_formula=init_formula, iter_formula=iter_formula, esc_test=esc_test)
+    escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", init_formula=init_formula, yield_formula=yield_formula, esc_test=esc_test, iter_formula=iter_formula)
     
     
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
     
-    drawingStats = {"dotCount": 0, "drawnDotCount":0}
+    # drawingStats = {"dotCount": 0, "drawnDotCount":0}
     
     pixelWidth = camera.screen_settings.cell_size.real
     if not pixelWidth < 0.1:
@@ -849,10 +847,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     def pointToVisitCountMatrixCell(point):
         return camera.screen_settings.complex_to_item(visitCountMatrix, point, centered=False)
     def drawPointUsingMask(mainPoint=None, mask=None):
-        drawingStats["dotCount"] += 1
+        # drawingStats["dotCount"] += 1
         try:
             vec_add_scalar_masked(pointToVisitCountMatrixCell(mainPoint), count_scale, mask)
-            drawingStats["drawnDotCount"] += 1
+            # drawingStats["drawnDotCount"] += 1
         except IndexError:
             pass # drawnDotCount won't be increased.
     def drawZippedPointsToChannels(mainPoints=None):
@@ -860,11 +858,11 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
         for i, currentPoint in enumerate(mainPoints):
             if currentPoint is None:
                 continue
-            drawingStats["dotCount"] += 1
+            # drawingStats["dotCount"] += 1
             try:
                 currentCell = pointToVisitCountMatrixCell(currentPoint)
                 currentCell[i] += count_scale
-                drawingStats["drawnDotCount"] += 1
+                # drawingStats["drawnDotCount"] += 1
             except IndexError:
                 pass # drawnDotCount won't be increased.
     def drawPointUsingComparison(mainPoint=None, comparisonPoint=None):
@@ -885,7 +883,8 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
                 SET_LIVE_STATUS("drawing...")
                 specializedDraw()
                 SET_LIVE_STATUS("saving...")
-                save_screenshot_as(name_prefix=output_name+"{}of{}rows{}of{}dotsdrawn_".format(y, camera.seed_settings.grid_size[1], drawingStats["drawnDotCount"], drawingStats["dotCount"]))
+                # {}of{}dots , drawingStats["drawnDotCount"], drawingStats["dotCount"]
+                save_screenshot_as(name_prefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
                 SET_LIVE_STATUS("saved...")
             if CAPTION_RATE_LIMITER.get_judgement():
                 SET_LIVE_STATUS("y={}".format(y))
@@ -1325,7 +1324,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((256, 256))
+screen = pygame.display.set_mode((512, 512))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1335,7 +1334,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "outbox4/"
+OUTPUT_FOLDER = "o7/"
 
 
 
@@ -1350,8 +1349,11 @@ def main():
     # for steppedVal in [0.0625, 0.125, 0.25, 0.5, 0.75, 1.0, 2.0]:
     # for steppedVal in ComplexGeometry.float_range(1, 8, 0.03125):
     # z=z**2+((-1)**n)*c
-    # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=1024, point_limit=1024, count_scale=2, init_formula="z=0j", iter_formula="z=z*z+c", esc_test="abs(z)>16", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True)
-    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=256.0)
+    # init_formula="z,zd,zs,w=c,c,c,1", yield_formula="z.real*zd+z.imag*(zs*(w**-1))", esc_test="abs(z)>16", iter_formula="z=z*z+c;zd,zs,w=0.5*zd+0.5*z,zs+z,w+1",
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=8192, point_limit=8192, count_scale=4,
+        init_formula="z0,z1,z2=0j,0j,0j", yield_formula="z0+z1+z2", esc_test="abs(z1)>256", iter_formula="z0,z1,z2=z1,z2,z2*z2+c", esc_exceptions=(OverflowError,ZeroDivisionError),
+        buddha_type="bb", banded=True)
+    # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=256.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
@@ -1378,3 +1380,44 @@ if __name__ == "__main__":
      
     """)
 
+
+
+"""
+todo:
+  -testing:
+    -improve extra assertions for segment_intersection with point-on-line testing.
+    -visual debugger for geometry.
+    -replace special answer enum.Enums with something that's easier to debug.
+    -replace fuzz/defuzz testing with testing that uses only fuzzing (that is, check if fun(fuzz(inputs))==fuzz(fun(inputs))).
+  -lap counter. improved lap timer.
+  -order intersection points on a segment by time (actually distance from start of seg).
+  -fixed-point geometry calculations.
+  -general:
+    -use c and escape point as a new coord space...
+    -journey pt -> journey pt <minus|divided by> mean of journey at that time.
+  -path self intersection:
+    -store segment presences in quadtree. subdividing the segment is not necessary to do this.
+    -refraction or reflection with previous segments.
+    -combine all intersections with a new segment using mean.
+  -nonpanel:
+    -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
+    -journey smoothing by <simple splines|follower with intertia|follower with smoothly changing direction>.
+  -panel:
+    -drawing:
+      -self-intersections of path visiting all Z in each row and col.
+    -simulation:
+      -matrix multiplication: MZ times MZ, MZ times MC, MC times MZ.
+      -gravity simulation: affect and draw <all|few> paths.
+    -distortion:
+      -sort rows by z real then sort cols by z imag. maybe repeat. maybe 2d bubblesort <alternating direction 1d|shifting boxes|simultaneous, find preference weights>.
+      -warp all z to roughly uniform density.
+    -hotels:
+      -make local density a simulation input. (also do this within journey for nonpanel).
+      -modify c, <<warp towards|rot around> average|gravitate> within hotel.
+      -draw density local maximum or minimum hotels only.
+      
+  
+  
+observations:
+  -geometry overhaul (25 Feb 2022) brought polarcross from 14x slower than rectcross to 9.6x, and disabling assertions brings it to 7x.
+"""
