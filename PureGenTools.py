@@ -75,8 +75,8 @@ def gen_track_previous_full(input_seq, allow_waste=False):
 assert (list(gen_track_previous_full(range(5,10))) == [(5,6), (6,7), (7,8), (8,9)])
 
 
-def gen_track_recent(input_seq, count=None):
-    history = collections.deque([None for i in range(count)])
+def gen_track_recent(input_seq, count=None, default=None):
+    history = collections.deque([default for i in range(count)])
     for i, item in enumerate(input_seq):
         history.append(item)
         history.popleft()

@@ -267,10 +267,10 @@ def get_normalized(value):
 assert_nearly_equal(get_normalized(complex(3,3)), complex(2**0.5/2, 2**0.5/2))
 """
 
-def get_normalized(value):
+def get_normalized(value, undefined_result=SpecialAnswer.DNE):
     if value == 0:
         assert isinstance(value, complex)
-        return SpecialAnswer.DNE
+        return undefined_result
     return value / abs(value)
     
 lastResult = None

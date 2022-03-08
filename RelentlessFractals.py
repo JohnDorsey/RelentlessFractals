@@ -25,7 +25,7 @@ from SegmentGeometry import find_left_min, lerp
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range
+from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -523,6 +523,53 @@ def gen_track_decaying_mean(input_seq, feedback=None):
     for item in inputGen:
         memoryValue = (feedback*memoryValue) + (feedbackCompliment*item)
         yield (memoryValue, item)
+        
+        
+def gen_change_basis_using_embedded_triplets(input_seq):
+    left, middle, right = (None, None, None)
+    for i, (left, middle, right) in enumerate(gen_track_recent(input_seq, count=3, default=0j)):
+        if i == 0:
+            continue
+        yield middle.real*left + middle.imag*right
+    if right is not None:
+        yield right.real*middle
+assert_equal(list(gen_change_basis_using_embedded_triplets([1+2j, 20+30j, 11+12j])), [2*(20+30j), 20*(1+2j)+30*(11+12j), 11*(20+30j)])
+assert_equal(list(gen_change_basis_using_embedded_triplets([1+2j, 3+4j])), [2*(3+4j), 3*(1+2j)])
+assert_equal(list(gen_change_basis_using_embedded_triplets([1+2j])), [0+0j])
+
+
+def gen_change_basis_using_zipped_triplets(input_seq):
+    raise NotImplementedError()
+
+
+def mean(input_seq):
+    sumSoFar = 0
+    i = -1
+    for i, item in enumerate(input_seq):
+        sumSoFar += item
+    itemCount = i + 1
+    if itemCount == 0:
+        return 0
+    assert itemCount > 0
+    return sumSoFar / float(itemCount)
+assert mean([3,4,5]) == 4
+assert mean([1,1,1,5]) == 2
+assert mean([1,2]) == 1.5
+
+
+def gen_linear_downsample_using_mean(input_seq, count=None):
+    inputGen = iter(input_seq)
+    while True:
+        nextBucket = [item for item in itertools.islice(inputGen, 0, count)]
+        yield mean(nextBucket)
+        if len(nextBucket) < count:
+            return
+    assert False
+
+
+
+
+
 
 
 
@@ -1036,20 +1083,6 @@ def gen_ordered_item_pairs(input_list):
     for Ai, Bi in gen_ordered_index_pairs(0, len(input_list)):
         yield (input_list[Ai], input_list[Bi])
 
-def mean(input_seq):
-    sumSoFar = 0
-    i = -1
-    for i, item in enumerate(input_seq):
-        sumSoFar += item
-    itemCount = i + 1
-    if itemCount == 0:
-        return 0
-    assert itemCount > 0
-    return sumSoFar / float(itemCount)
-assert mean([3,4,5]) == 4
-assert mean([1,1,1,5]) == 2
-assert mean([1,2]) == 1.5
-
 
 """
 PanelCell = collections.NamedTuple("PanelCellName", ["seed", "current_z", "previous_z", "set_membership"])
@@ -1145,9 +1178,16 @@ def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
     
     
     
+    
+
+
+
+
+    
+    
 
 @measure_time_nicknamed("do_panel_buddhabrot")
-def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb"):
+def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None):
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
@@ -1158,8 +1198,8 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     # neighborPathSimultaneousCross
     # 4NeighborZShareChooseNearestToC 4NeighborZShareChooseRandom
     # zpos(RdisttocGrBi)
-    # 
-    setSummaryStr = "panel(headstart(x+y))_{}_splitlessSliceCross_2linsub_agletized_(ReitherGrowCcol)".format(buddhabrot_set_type)
+    # (headstart(32)) 2linsub_agletized
+    setSummaryStr = "panel{}_{}_splitlessSplice_norm_cross_ReithrGrowCcol".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type)
     viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSup{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blank" if blank_on_output else "noBlank"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
@@ -1213,14 +1253,20 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     
     
     # HEADSTART
-    print("giving headstart...")
-    for y, x, panelCell in enumerate_to_depth(panel, depth=2):
-        if x == 0:
-            if STATUS_RATE_LIMITER.get_judgement():
-                print("giving headstart: ~{}%...".format(int(y*100.0/len(panel)))
-        for i in range(x+y):
-            iteratePanelCell(panelCell)
-    print("done giving headstart.")
+    if headstart is None:
+        print("no headstart to give.")
+    else:
+        print("giving headstart of {}...".format(headstart))
+        for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+            if x == 0:
+                if STATUS_RATE_LIMITER.get_judgement():
+                    print("giving headstart: ~{}%...".format(int(y*100.0/len(panel))))
+            localHeadstart = eval(headstart)
+            assert localHeadstart >= 0 and isinstance(localHeadstart, int)
+            for i in range(localHeadstart):
+                iteratePanelCell(panelCell)
+        print("done giving headstart.")
+    
     
     
     for iter_index in range(0, iter_limit):
@@ -1275,13 +1321,15 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
         """
         
         def drawFromPointSeqInLoop(inputSeq, mask=None):
-            ptListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
-            agletizedPtListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptListGen)
-            ptSeq = itertools.chain.from_iterable(agletizedPtListGen)
-            # ptSeq = [item for item in inputSeq if item is not None][::2]
-            ptSeqSelfIntersections = gen_path_self_intersections(ptSeq, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
-            # ptSeqDoubleSelfIntersections = gen_path_self_intersections(ptSeqSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
-            drawPointSeqUsingMask(ptSeqSelfIntersections, mask=mask)
+            # ptListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
+            # agletizedPtListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptListGen)
+            # ptSeq = itertools.chain.from_iterable(agletizedPtListGen)
+            pointSeq = [item for item in inputSeq if item is not None]
+            normPointSeq = [get_normalized(item, undefined_result=0) for item in pointSeq]
+            normPointSeqSelfIntersections = gen_path_self_intersections(normPointSeq, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            # pointSeqDoubleSelfIntersections = gen_path_self_intersections(pointSeqSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
+            # newBasisPointSeq = gen_change_basis_using_embedded_triplets(pointSeq)
+            drawPointSeqUsingMask(normPointSeqSelfIntersections, mask=mask)
                     
         for y in range(len(panel)):
             zrow = [panel[y][x][i_CURRENT_Z] for x in range(len(panel[y]))]
@@ -1391,7 +1439,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((256, 256))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1422,7 +1470,7 @@ def main():
         init_formula="z1,z2=0j,0j", yield_formula="abs(z1+z2)+abs(z1*z2)*1j", esc_test="abs(z2)>256", iter_formula="z1,z2=z2,z2*z2+c", esc_exceptions=(OverflowError,ZeroDivisionError),
         buddha_type="bb", banded=True)
     """
-    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=False, count_scale=8, escape_radius=16.0)
+    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=8, escape_radius=16.0, headstart="16")
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
