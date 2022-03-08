@@ -224,8 +224,9 @@ def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _pe
         raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
     
     if nickname in _persistent_info:
-        print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.".format(repr(nickname)))
-        include_lap = False
+        if include_lap:
+            print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.".format(repr(nickname)))
+            include_lap = False
     else:
         _persistent_info[nickname] = {"lap_end_time": None}
         

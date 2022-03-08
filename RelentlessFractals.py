@@ -13,6 +13,7 @@ import random
 import gc
 
 import pygame
+import numpy
 
 from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
@@ -39,8 +40,6 @@ del testZip, testZip2
 
 
 
-
-
 import PygameDashboard
 from PygameDashboard import measure_time_nicknamed
 
@@ -49,6 +48,7 @@ def THIS_MODULE_EXEC(string):
     exec(string)
 
 CAPTION_RATE_LIMITER = PygameDashboard.SimpleRateLimiter(1.0)
+STATUS_RATE_LIMITER = PygameDashboard.RateLimiter(3.0)
 
 
 
@@ -94,16 +94,8 @@ def is_round_binary(value):
     assert value > 0
     return value == 2**(value.bit_length()-1)
     
-assert is_round_binary(1)
-assert is_round_binary(2)
-assert not is_round_binary(3)
-    
-assert is_round_binary(256)
-assert not is_round_binary(255)
-
-assert is_round_binary(65536)
-assert not is_round_binary(65535)
-assert not is_round_binary(65537)
+assert all(is_round_binary(testNum) for testNum in [2**i for i in range(2, 33)])
+assert not any(is_round_binary(testNum) for testNum in [2**i+chg for i in range(2,33) for chg in (-1,1)])
 
 
 def assure_round_binary(value):
@@ -203,27 +195,32 @@ def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
 
 
             
-def construct_data(size, default_value=None):
+def construct_data(size, default_value=None, converter_fun=(lambda x: x)):
     assert len(size) > 0
     if len(size) == 1:
-        return [copy.deepcopy(default_value) for i in range(size[0])]
+        return converter_fun([copy.deepcopy(default_value) for i in range(size[0])])
     else:
-        return [construct_data(size[1:], default_value=default_value) for i in range(size[0])]
+        return converter_fun([construct_data(size[1:], default_value=default_value) for i in range(size[0])])
 
 assert_equal(shape_of(construct_data([5,6,7])), [5,6,7])
 
 
+def construct_numpy_data(size, default_value=None):
+    return construct_data(size, default_value=default_value, converter_fun=numpy.array)
+
+
+
 def fill_data(data, fill_value):
     # print("fix fill data")
-    assert isinstance(data, list)
+    assert isinstance(data, (list, numpy.ndarray)), type(data)
     for i in range(len(data)):
-        if isinstance(data[i], list):
+        if isinstance(data[i], (list, numpy.ndarray)):
             fill_data(data[i], fill_value)
-        elif isinstance(data[i], tuple):
-            raise TypeError("tuples can't be processed!")
+        elif isinstance(data[i], (tuple, str)):
+            raise TypeError("type {} can't be processed!".format(type(data[i])))
         else:
-            if not type(data[i]) == type(fill_value):
-                raise NotImplementedError("type can't be changed from {} to {}!".format(repr(type(data[i])), repr(type(fill_value))))
+            if not hasattr(data[i], "__setitem__") == hasattr(fill_value, "__setitem__"): # don't test for __getitem__ because numpy.int64 has that.
+                raise NotImplementedError("type can't be changed from {} to {} because only one seems to be a container!".format(repr(type(data[i])), repr(type(fill_value))))
             data[i] = fill_value
 
 
@@ -390,21 +387,30 @@ def count_float_local_minima(input_seq): # does not recognize any minimum with m
     
 
     
+def gen_seg_seq_intersections_with_seg(seg_seq, reference_seg, intersection_fun=None):
+    for oldSeg in seg_seq:
+        intersection = intersection_fun(reference_seg, oldSeg)
+        if intersection is not None:
+            yield intersection
 
-
-def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None):
+def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None, sort_by_time=None):
+    assert sort_by_time is not None
     knownSegs = []
     for currentSeg in seg_seq:
         knownSegs.append(currentSeg)
-        for oldKnownSeg in knownSegs[:-1-gap_size]:
-            intersection = intersection_fun(currentSeg, oldKnownSeg)
-            if intersection is not None:
+        intersectionGen = gen_seg_seq_intersections_with_seg(knownSegs[:-1-gap_size], currentSeg, intersection_fun=intersection_fun)
+        if sort_by_time:
+            intersectionList = sorted(intersectionGen, key=(lambda point: abs(currentSeg[0]-point)))
+            for intersection in intersectionList:
+                yield intersection
+        else:
+            for intersection in intersectionGen:
                 yield intersection
     
-def gen_path_self_intersections(journey, intersection_fun=None): #could use less memory.
-    return gen_seg_seq_self_intersections(gen_track_previous_full(journey, allow_waste=True), intersection_fun=intersection_fun, gap_size=1)
+def gen_path_self_intersections(journey, intersection_fun=None, sort_by_time=None): #could use less memory.
+    return gen_seg_seq_self_intersections(gen_track_previous_full(journey, allow_waste=True), intersection_fun=intersection_fun, gap_size=1, sort_by_time=sort_by_time)
     
-assert_equal(list(gen_path_self_intersections([complex(0,0),complex(0,4),complex(2,2),complex(-2,2), complex(-2,3),complex(10,3)], intersection_fun=SegmentGeometry.segment_intersection)), [complex(0,2), complex(0,3),complex(1,3)])
+assert_equal(list(gen_path_self_intersections([complex(0,0),complex(0,4),complex(2,2),complex(-2,2), complex(-2,3),complex(10,3)], intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)), [complex(0,2), complex(0,3),complex(1,3)])
 """
 def gen_path_self_non_intersections(journey, intersection_fun=None): # code duplication, but there's no other fast way.
     knownSegs = []
@@ -424,6 +430,7 @@ def gen_ladder_rung_self_intersections(journey0, journey1, intersection_fun=None
 """
                     
 def gen_path_intersections_with_seg(journey, reference_seg, intersection_fun=None):
+    raise NotImplementedError("possibly redefine using call to seg seq methods, and create new tests.")
     for currentSeg in gen_track_previous_full(journey):
         intersection = intersection_fun(currentSeg, reference_seg)
         if intersection is not None:
@@ -841,7 +848,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     if not pixelWidth < 0.1:
         print("Wow, are pixels supposed to be that small?")
     
-    visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
+    visitCountMatrix = construct_numpy_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
     
     
     def pointToVisitCountMatrixCell(point):
@@ -887,7 +894,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
                 save_screenshot_as(name_prefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
                 SET_LIVE_STATUS("saved...")
             if CAPTION_RATE_LIMITER.get_judgement():
-                SET_LIVE_STATUS("y={}".format(y))
+                SET_LIVE_STATUS("{}of{}".format(y, camera.seed_settings.grid_size[1]))
                 
         # old: journey = journeyFun(seed); constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)] ...
         constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), 0, iter_limit+1), esc_exceptions))
@@ -1057,11 +1064,9 @@ i_SEED, i_PREVIOUS_Z, i_CURRENT_Z, i_ISINSET = (0, 1, 2, 3)
 def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_set_type=None, centered_sample=None):
     print("constructing empty panel...")
 
-    statusRateLimiter = PygameDashboard.RateLimiter(3.0)
-
     assert seed_settings.grid_size[0] <= 4096, "make sure there is enough memory for this!"
     panel = construct_data(seed_settings.grid_size[::-1], default_value=None)
-    cToMandelItercountFast = compile_mandel_method("c_to_mandel_itercount_fast", init_formula="z=0j", iter_formula="z=z**2+c", esc_test="abs(z)>{}".format(escape_radius))
+    cToMandelItercountFast = compile_mandel_method("c_to_mandel_itercount_fast", init_formula="z=0j", yield_formula="z", esc_test="abs(z)>{}".format(escape_radius), iter_formula="z=z**2+c")
     arglessItercountFun = (lambda: cToMandelItercountFast(seed, iter_limit))
     
     print("populating panel...")
@@ -1071,7 +1076,7 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
         panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
         panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=arglessItercountFun, iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type)
         panel[y][x] = panelCell
-        if x == 0 and statusRateLimiter.get_judgement():
+        if x == 0 and STATUS_RATE_LIMITER.get_judgement():
             print("create_panel: {}%...".format(str(int(float(100*y)/seed_settings.grid_size[1])).rjust(2," ")))
             
     yes, no = (0.0, 0.0)
@@ -1117,25 +1122,50 @@ NotTracked = summon_cactus("NotTracked")
 def clamp_positive(val):
     return val if val >= 0 else 0
     
+    
+def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
+    inputGen = iter(input_seq)
+    currentList = []
+    while True:
+        try:
+            currentItem = next(inputGen)
+        except StopIteration:
+            if include_empty or len(currentList) > 0:
+                yield currentList
+            return
+        if trigger_fun(currentItem):
+            if include_empty or len(currentList) > 0:
+                yield currentList
+            currentList = []
+        else:
+            currentList.append(currentItem)
+    assert False
+    
+    
+    
+    
+    
 
 @measure_time_nicknamed("do_panel_buddhabrot")
 def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb"):
     assert iter_limit is not None
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
-    assert blank_on_output, "not ready yet? also remove this assertion in loop body if ready, to avoid a disappointing crash after panel init!"
+    # assert blank_on_output, "not ready yet? also remove this assertion in loop body if ready, to avoid a disappointing crash after panel init!"
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
     # outputColorSummary = "top(RguestpaircmidptbothinsetGoneinsetBneitherinset)bottom(endpt)"
     # neighborPathSimultaneousCross
     # 4NeighborZShareChooseNearestToC 4NeighborZShareChooseRandom
-    setSummaryStr = "panel_{}_zpos(RdisttocGrBi)".format(buddhabrot_set_type)
-    viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSuper{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blankOnOut" if blank_on_output else "noBlankOnOut"))
+    # zpos(RdisttocGrBi)
+    # 
+    setSummaryStr = "panel(headstart(x+y))_{}_splitlessSliceCross_2linsub_agletized_(ReitherGrowCcol)".format(buddhabrot_set_type)
+    viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSup{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blank" if blank_on_output else "noBlank"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
     print("creating visitCountMatrix...")
     
-    screenSpaceHomeMatrix, visitCountMatrix = (construct_data(camera.screen_settings.grid_size[::-1], default_value=[count_scale*0, count_scale*0, count_scale*0]), summon_cactus("visitCountMatrix_is_disabled."))
+    screenSpaceHomeMatrix, visitCountMatrix = (summon_cactus("screenSpaceHomeMatrix_is_disabled."), construct_numpy_data(camera.screen_settings.grid_size[::-1], default_value=[count_scale*0, count_scale*0, count_scale*0]), )
     # assert tuple(shape_of(visitCountMatrix)) == camera.screen_settings.grid_size[::-1]+(3,)
     
     
@@ -1150,6 +1180,11 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
             pass # drawnDotCount won't be increased.
     def drawPointUsingComparison(mainPoint=None, comparisonPoint=None): # DUPLICATE CODE  DO NOT MODIFY
         drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
+        
+    def drawPointSeqUsingMask(inputSeq, mask=None):
+        for point in inputSeq:
+            drawPointUsingMask(mainPoint=point, mask=mask)
+    
     
     
     def specializedDraw(inputMatrix):
@@ -1170,21 +1205,36 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     print("done creating hotelGrid.")
     """
     
+    def iteratePanelCell(panelCell):
+        if panelCell[i_CURRENT_Z] is not None:
+            panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (panelCell[i_CURRENT_Z], panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED])
+            if abs(panelCell[i_CURRENT_Z]) > escape_radius:
+                panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, None)
+    
+    
+    # HEADSTART
+    print("giving headstart...")
+    for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+        if x == 0:
+            if STATUS_RATE_LIMITER.get_judgement():
+                print("giving headstart: ~{}%...".format(int(y*100.0/len(panel)))
+        for i in range(x+y):
+            iteratePanelCell(panelCell)
+    print("done giving headstart.")
+    
+    
     for iter_index in range(0, iter_limit):
     
         # SHOW
         SET_LIVE_STATUS("n={}".format(iter_index))
         if (iter_index % output_interval_iters) == 0:
-            specializedDrawAndScreenshot(screenSpaceHomeMatrix, name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
-            blankIfNeeded(screenSpaceHomeMatrix)
-            assert blank_on_output, "not ready yet?"
+            specializedDrawAndScreenshot(visitCountMatrix, name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
+            blankIfNeeded(visitCountMatrix)
+            # assert blank_on_output, "not ready yet?"
     
         # ITERATE
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
-            if panelCell[i_CURRENT_Z] is not None:
-                panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED])
-                if abs(panelCell[i_CURRENT_Z]) > escape_radius:
-                    panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, None)
+            iteratePanelCell(panelCell)
         """
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if panelCell[i_CURRENT_Z] is not None:
@@ -1199,9 +1249,10 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
         
                     
         # DRAW
+        """
         v256ovrScrDiag = 256.0/abs(camera.view.size)
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
-            if y in (0, len(panel)-1) or x in (0,len(panel[0])-1):
+            if y in (0, len(panel)-1) or x in (0, len(panel[0])-1):
                 continue
             if panelCell[i_CURRENT_Z] is None:
                 continue
@@ -1212,8 +1263,8 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
             itemToEdit = camera.screen_settings.complex_to_item(screenSpaceHomeMatrix, panelCell[i_SEED], centered=False)
             
             itemToEdit[0], itemToEdit[1], itemToEdit[2] = (abs(panelCell[i_CURRENT_Z]-panelCell[i_SEED])*v256ovrScrDiag, clamp_positive(panelCell[i_CURRENT_Z].real*v256ovrScrDiag), clamp_positive(panelCell[i_CURRENT_Z].imag*v256ovrScrDiag))
-            
-            """
+        """
+        """
             # neighborPathSimultaneousCross:
             for neighboringPanelCell in neighboringPanelCells:
                 if neighboringPanelCell[i_CURRENT_Z] is None:
@@ -1221,7 +1272,23 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
                 intersectionPoint = SegmentGeometry.segment_intersection((panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z]), (neighboringPanelCell[i_PREVIOUS_Z], neighboringPanelCell[i_CURRENT_Z]))
                 if intersectionPoint is not None:
                     drawPointUsingComparison(mainPoint=intersectionPoint, comparisonPoint=panelCell[i_SEED])
-            """
+        """
+        
+        def drawFromPointSeqInLoop(inputSeq, mask=None):
+            ptListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
+            agletizedPtListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptListGen)
+            ptSeq = itertools.chain.from_iterable(agletizedPtListGen)
+            # ptSeq = [item for item in inputSeq if item is not None][::2]
+            ptSeqSelfIntersections = gen_path_self_intersections(ptSeq, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            # ptSeqDoubleSelfIntersections = gen_path_self_intersections(ptSeqSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
+            drawPointSeqUsingMask(ptSeqSelfIntersections, mask=mask)
+                    
+        for y in range(len(panel)):
+            zrow = [panel[y][x][i_CURRENT_Z] for x in range(len(panel[y]))]
+            drawFromPointSeqInLoop(zrow, mask=[True, True, False])
+        for x in range(len(panel[0])):
+            zcol = [panel[y][x][i_CURRENT_Z] for y in range(len(panel))]
+            drawFromPointSeqInLoop(zcol, mask=[True, False, True])
         
         # hotel code:
         """
@@ -1256,8 +1323,8 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
             hotel.clear()
         """
                 
-    specializedDrawAndScreenshot(screenSpaceHomeMatrix, name_prefix=output_name)
-    blankIfNeeded(screenSpaceHomeMatrix)
+    specializedDrawAndScreenshot(visitCountMatrix, name_prefix=output_name)
+    blankIfNeeded(visitCountMatrix)
                 
                 
                 
@@ -1324,7 +1391,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((512, 512))
+screen = pygame.display.set_mode((1024, 1024))
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1334,7 +1401,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "o7/"
+OUTPUT_FOLDER = "oA/"
 
 
 
@@ -1350,10 +1417,12 @@ def main():
     # for steppedVal in ComplexGeometry.float_range(1, 8, 0.03125):
     # z=z**2+((-1)**n)*c
     # init_formula="z,zd,zs,w=c,c,c,1", yield_formula="z.real*zd+z.imag*(zs*(w**-1))", esc_test="abs(z)>16", iter_formula="z=z*z+c;zd,zs,w=0.5*zd+0.5*z,zs+z,w+1",
+    """
     do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=8192, point_limit=8192, count_scale=4,
-        init_formula="z0,z1,z2=0j,0j,0j", yield_formula="z0+z1+z2", esc_test="abs(z1)>256", iter_formula="z0,z1,z2=z1,z2,z2*z2+c", esc_exceptions=(OverflowError,ZeroDivisionError),
+        init_formula="z1,z2=0j,0j", yield_formula="abs(z1+z2)+abs(z1*z2)*1j", esc_test="abs(z2)>256", iter_formula="z1,z2=z2,z2*z2+c", esc_exceptions=(OverflowError,ZeroDivisionError),
         buddha_type="bb", banded=True)
-    # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=256.0)
+    """
+    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=1, blank_on_output=False, count_scale=8, escape_radius=16.0)
 
     PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
