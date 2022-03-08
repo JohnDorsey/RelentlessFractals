@@ -1,7 +1,7 @@
 
 import operator
 
-from PureGenTools import peek_first_and_iter
+from PureGenTools import peek_first_and_iter, ProvisionError
 
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
@@ -165,7 +165,7 @@ def all_are_equal(input_seq, equality_test_fun=operator.eq):
     return all_are_equal_to(inputGen, example=first, equality_test_fun=equality_test_fun)
     
 erb = get_exception_raised_by(all_are_equal)([])
-assert isinstance(erb, IndexError), repr(erb)
+assert isinstance(erb, ProvisionError), repr(erb)
 assert all_are_equal("aaaaa")
 assert not all_are_equal("aaaba")
 del erb

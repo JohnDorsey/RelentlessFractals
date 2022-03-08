@@ -5,12 +5,18 @@ def _assert_equal(thing0, thing1): # a copy.
 import collections
 
 
+
+class ProvisionError(Exception):
+    pass
+        
+
+
 def peek_first_and_iter(input_seq):
     inputGen = iter(input_seq)
     try:
         first = next(inputGen)
     except StopIteration:
-        raise IndexError("empty, couldn't peek first!")
+        raise ProvisionError()
     return (first, inputGen)
 
 
