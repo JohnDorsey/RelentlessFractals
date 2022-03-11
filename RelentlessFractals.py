@@ -439,8 +439,9 @@ def gen_path_pair_mutual_intersections(point_seq_0, point_seq_1, intersection_fu
 assert_equal(list(gen_path_pair_mutual_intersections([1+2j, 3+2j, 30+2j, 30+3j, 29+3j, 29+1j], [2+1j, 2+3j, 2+30j, 3+30j, 3+29j, 1+29j], intersection_fun=SegmentGeometry.segment_intersection)), [2+2j])
 
 
-print("tests needed for path pair windowed mutual intersections.")
+# print("tests needed for path pair windowed mutual intersections.")
 def gen_path_pair_windowed_mutual_intersections(point_seq_0, point_seq_1, intersection_fun=None, window_distance=None, skip_count=0):
+    raise NotImplementedError("tests needed!")
     assert window_distance >= 1
     assert 0 <= skip_count < window_distance # this window distance test I'm not so sure about.
     segGenPair = [gen_track_previous_full(pointSeq, allow_waste=True) for pointSeq in (point_seq_0, point_seq_1)]
@@ -1191,9 +1192,11 @@ i_SEED, i_PREVIOUS_Z, i_CURRENT_Z, i_ISINSET = (0, 1, 2, 3)
 
 
 @measure_time_nicknamed("create_panel")
-def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_set_type=None, centered_sample=None):
+def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_set_type=None, centered_sample=None, kill_not_in_set=None):
     print("constructing empty panel...")
 
+    assert kill_not_in_set is not None
+    assert kill_not_in_set, "are you sure?"
     assert seed_settings.grid_size[0] <= 4096, "make sure there is enough memory for this!"
     panel = construct_data(seed_settings.grid_size[::-1], default_value=None)
     cToMandelItercountFast = compile_mandel_method("c_to_mandel_itercount_fast", init_formula="z=0j", yield_formula="z", esc_test="abs(z)>{}".format(escape_radius), iter_formula="z=z**2+c")
@@ -1204,13 +1207,16 @@ def create_panel(seed_settings, iter_limit=None, escape_radius=None, buddhabrot_
     assert abs(seed_settings.graveyard_point) > escape_radius
     for x, y, seed in seed_settings.iter_cell_descriptions(centered=centered_sample):
         panelCell = [seed, 0.0+0.0J, 0.0+0.0J, None]
-        panelCell[i_ISINSET] = check_bb_containedness(argless_itercount_fun=arglessItercountFun, iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type)
+        isInSet = check_bb_containedness(argless_itercount_fun=arglessItercountFun, iter_limit=iter_limit, buddhabrot_set_type=buddhabrot_set_type)
+        panelCell[i_ISINSET] = isInSet
+        if (not isInSet) and kill_not_in_set:
+            panelCell[i_CURRENT_Z], panelCell[i_PREVIOUS_Z] = (None, None)
         panel[y][x] = panelCell
         if x == 0 and STATUS_RATE_LIMITER.get_judgement():
             print("create_panel: {}%...".format(str(int(float(100*y)/seed_settings.grid_size[1])).rjust(2," ")))
             
     yes, no = (0.0, 0.0)
-    for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+    for panelCell in iterate_to_depth(panel, depth=2):
         if panelCell[i_ISINSET]:
             yes += 1.0
         else:
@@ -1277,9 +1283,10 @@ def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
     
 
 @measure_time_nicknamed("do_panel_buddhabrot")
-def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None, skip_zero_iter_image=False, w_int=None, w_step=None):
+def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None, skip_zero_iter_image=False, kill_not_in_set=True, w_int=None, w_step=None):
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
+    assert kill_not_in_set, "are you sure you're ready?"
     assert iter_limit is not None
     if output_iter_limit is None:
         output_iter_limit = iter_limit
@@ -1298,13 +1305,14 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
     # 2linsub_agletized
     # pow(wf(z,normz),wf(1,normc))_(w={}*{})
     # _post(pow(normz,normc))
-    setSummaryStr = "panel{}_{}_splitlessSlice_adjMutuRectcross_windowdistance(R5G10C15)".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type, w_step, w_int)
+    # adjMutuRectcross_windowdistance(R5G10C15)
+    setSummaryStr = "panel{}_{}_splitlessSlice_gradMean_rectcross_ReithrGrowCcol".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type, w_step, w_int)
     viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSup{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blank" if blank_on_output else "noBlank"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
     print("creating visitCountMatrix...")
     
-    screenSpaceHomeMatrix, visitCountMatrix = (summon_cactus("screenSpaceHomeMatrix_is_disabled."), construct_numpy_data(camera.screen_settings.grid_size[::-1], default_value=[count_scale*0, count_scale*0, count_scale*0]), )
+    screenSpaceHomeMatrix, visitCountMatrix = (summon_cactus("screenSpaceHomeMatrix_is_disabled."), construct_data(camera.screen_settings.grid_size[::-1], default_value=[count_scale*0, count_scale*0, count_scale*0]), )
     # assert tuple(shape_of(visitCountMatrix)) == camera.screen_settings.grid_size[::-1]+(3,)
     
     
@@ -1345,7 +1353,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
         if blank_on_output:
             fill_data(inputMatrix, count_scale*0)
     
-    panel = create_panel(camera.seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False)
+    panel = create_panel(camera.seed_settings, iter_limit=iter_limit, escape_radius=escape_radius, buddhabrot_set_type=buddhabrot_set_type, centered_sample=False, kill_not_in_set=kill_not_in_set)
     
     """
     hotelGrid = construct_data(camera.seed_settings.grid_size[::-1], default_value=[])
@@ -1355,6 +1363,8 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
     
     def iteratePanelCell(panelCell):
         if panelCell[i_CURRENT_Z] is not None:
+            if kill_not_in_set:
+                assert panelCell[i_ISINSET] is True
             panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (panelCell[i_CURRENT_Z], panelCell[i_CURRENT_Z]**2 + panelCell[i_SEED])
             if abs(panelCell[i_CURRENT_Z]) > escape_radius:
                 panelCell[i_PREVIOUS_Z], panelCell[i_CURRENT_Z] = (None, None)
@@ -1430,23 +1440,26 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
                     drawPointUsingComparison(mainPoint=intersectionPoint, comparisonPoint=panelCell[i_SEED])
         """
         
-        """
-        def drawFromCellSeqInLoop(inputSeq, mask=None, include_unprocessed=None):
-            assert include_unprocessed is not None
-            # ptListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
-            # agletizedPtListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptListGen)
-            # ptSeq = itertools.chain.from_iterable(agletizedPtListGen)
+        
+        def drawFromCellSeqInLoop(inputCellSeq, mask=None, include_unprocessed=None):
+            assert include_unprocessed is False, "not ready"
+            # ptSplitListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
+            # agletizedPtSplitListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptSplitListGen)
+            # ptSeq = itertools.chain.from_iterable(agletizedPtSplitListGen)
+            splitlessPointGen = (cell[i_CURRENT_Z] for cell in inputCellSeq if cell[i_CURRENT_Z] is not None)
+            gradualMeanGen = (item[0] for item in gen_track_mean(splitlessPointGen))
+            gradualMeanSelfIntersectionGen = gen_path_self_intersections(gradualMeanGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
             
-            zcPairGen = ((cell[i_CURRENT_Z], cell[i_SEED]) for cell in inputSeq if cell[i_CURRENT_Z] is not None and cell[i_CURRENT_Z] != 0j)
-            moddedPointGen = ((w_compliment*zcPair[0]+w*get_normalized(zcPair[0], undefined_result=0j))**(w_compliment*1+w*get_normalized(zcPair[1], undefined_result=0j)) for zcPair in zcPairGen)
+            # zcPairGen = ((cell[i_CURRENT_Z], cell[i_SEED]) for cell in inputSeq if cell[i_CURRENT_Z] is not None and cell[i_CURRENT_Z] != 0j)
+            # moddedPointGen = ((w_compliment*zcPair[0]+w*get_normalized(zcPair[0], undefined_result=0j))**(w_compliment*1+w*get_normalized(zcPair[1], undefined_result=0j)) for zcPair in zcPairGen)
             
-            #normPointSeq = [get_normalized(item, undefined_result=0) for item in pointSeq]
-            moddedPointSeqSelfIntersections = gen_path_self_intersections(moddedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            # normPointSeq = [get_normalized(item, undefined_result=0) for item in pointSeq]
+            # moddedPointSeqSelfIntersections = gen_path_self_intersections(moddedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
             # pointSeqDoubleSelfIntersections = gen_path_self_intersections(pointSeqSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
             # newBasisPointSeq = gen_change_basis_using_embedded_triplets(pointSeq)
-            drawPointSeqUsingMask(moddedPointSeqSelfIntersections, mask=mask)
-            if include_unprocessed:
-                drawPointSeqUsingMask(moddedPointSeq, mask=[True,False,False])
+            drawPointSeqUsingMask(gradualMeanSelfIntersectionGen, mask=mask)
+            # if include_unprocessed:
+            #    drawPointSeqUsingMask(, mask=[True,False,False])
                 
         for y in range(len(panel)):
             cellRow = [panel[y][x] for x in range(len(panel[y]))] # could be faster.
@@ -1454,6 +1467,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
         for x in range(len(panel[0])):
             cellCol = [panel[y][x] for y in range(len(panel))]
             drawFromCellSeqInLoop(cellCol, mask=[True, False, True], include_unprocessed=False)
+        
         """
         def drawFromAdjacentCellSeqsInLoop(cellSeq0, cellSeq1):
             pointSeq0, pointSeq1 = [[cell[i_CURRENT_Z] for cell in cellSeq if cell[i_CURRENT_Z] is not None] for cellSeq in (cellSeq0, cellSeq1)]
@@ -1467,7 +1481,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
         for x in range(1, len(panel[0])):
             cellCol0, cellCol1 = [[panel[y][xx] for y in range(len(panel))] for xx in (x-1, x)]
             drawFromAdjacentCellSeqsInLoop(cellCol0, cellCol1)
-                    
+        """
             
         
         # hotel code:
@@ -1573,7 +1587,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((1024, 1024))
+screen = pygame.display.set_mode((512, 512))
 SET_LIVE_STATUS("loading...")
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
@@ -1584,8 +1598,7 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oG/panel/3/"
-
+OUTPUT_FOLDER = "oI/nondecayingmean/rectcross/1/"
 
 
 
@@ -1611,7 +1624,7 @@ def main():
     # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=4096, point_limit=4096, count_scale=0.5,
     #    init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) # w_int=wInt, w_step=1.0/wSteps)
     
-    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=1, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
+    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
 
 
