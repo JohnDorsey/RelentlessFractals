@@ -17,26 +17,21 @@ import numpy
 
 from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
-from TestingBasics import assert_equal
+from TestingBasics import assert_equal, summon_cactus
 
-from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized
+from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized, float_range
 import SegmentGeometry
 from SegmentGeometry import find_left_min, lerp
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError
+from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip, izip_longest, gen_track_recent_trimmed
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
-cpx=complex
+cpx, norm = (complex, get_normalized)
 
 
-testZip = zip("ab","cd")
-izip = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
-testZip2 = izip("ab","cd")
-assert (iter(testZip2) is iter(testZip2)) and (not isinstance(testZip2, list)), "can't izip?"
-del testZip, testZip2
 
 
 
@@ -355,7 +350,7 @@ def get_sum_of_inverse_segment_lengths(constrained_journey):
             try:
                 result += 1.0 / currentSegLen
             except ZeroDivisionError:
-                result += 2.0**256
+                result = math.inf
     # print("returning {}.".format(result))
     return result
     
@@ -367,11 +362,12 @@ def get_sum_of_inverse_abs_vals(constrained_journey):
         try:
             result += 1.0 / currentVal
         except ZeroDivisionError:
-            pass
+            result = math.inf
     return result
     
     
 def count_float_local_minima(input_seq): # does not recognize any minimum with more than one identical value in a row.
+    raise NotImplementedError("tests needed! and maybe rewrite using gen_track_recent...")
     result = 0
     history = [None, None]
     for item in input_seq:
@@ -393,17 +389,28 @@ def gen_seg_seq_intersections_with_seg(seg_seq, reference_seg, intersection_fun=
         if intersection is not None:
             yield intersection
 
-def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None, sort_by_time=None, combine_colinear=None):
+
+def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, preloaded_seg_history=None, freeze_seg_history=None, gap_size=None, sort_by_time=None, combine_colinear=None):
     assert sort_by_time is not None
-    if not sort_by_time:
+    assert freeze_seg_history is not None
+    if sort_by_time:
         assert combine_colinear is not None
+    else:
         assert not combine_colinear, "bad args"
-    knownSegs = []
+        
+    if preloaded_seg_history is None:
+        segHistory = []
+        assert freeze_seg_history is False
+    else:
+        segHistory = preloaded_seg_history
+        assert freeze_seg_history, "are you sure? if so, remove this assertion to use this feature."
+    
     for currentSeg in seg_seq:
-        knownSegs.append(currentSeg)
-        intersectionGen = gen_seg_seq_intersections_with_seg(knownSegs[:-1-gap_size], currentSeg, intersection_fun=intersection_fun)
+        if not freeze_seg_history:
+            segHistory.append(currentSeg)
+        intersectionGen = gen_seg_seq_intersections_with_seg(segHistory[:-1-gap_size], currentSeg, intersection_fun=intersection_fun)
         if sort_by_time:
-            intersectionList = sorted(intersectionGen, key=(lambda point: abs(currentSeg[0]-point)))
+            intersectionList = sorted(intersectionGen, key=(lambda point: abs(currentSeg[0]-point))) # WOW, that looks slow.
             if len(intersectionList) > 0:
                 if combine_colinear:
                     yield intersectionList[0]
@@ -415,11 +422,44 @@ def gen_seg_seq_self_intersections(seg_seq, intersection_fun=None, gap_size=None
         else:
             for intersection in intersectionGen:
                 yield intersection
-    
+
+
 def gen_path_self_intersections(journey, intersection_fun=None, sort_by_time=None, combine_colinear=False): #could use less memory.
-    return gen_seg_seq_self_intersections(gen_track_previous_full(journey, allow_waste=True), intersection_fun=intersection_fun, gap_size=1, sort_by_time=sort_by_time, combine_colinear=combine_colinear)
+    return gen_seg_seq_self_intersections(gen_track_previous_full(journey, allow_waste=True), intersection_fun=intersection_fun, freeze_seg_history=False, gap_size=1, sort_by_time=sort_by_time, combine_colinear=combine_colinear)
     
 assert_equal(list(gen_path_self_intersections([complex(0,0),complex(0,4),complex(2,2),complex(-2,2), complex(-2,3),complex(10,3)], intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)), [complex(0,2), complex(0,3),complex(1,3)])
+
+
+def gen_path_pair_mutual_intersections(point_seq_0, point_seq_1, intersection_fun=None):
+    segList0 = list(gen_track_previous_full(point_seq_0, allow_waste=True))
+    segGen1 = gen_track_previous_full(point_seq_1, allow_waste=True)
+    # let the gap size be 0 because regardless of gap size, segs are never actually compared to their predecessor in this method!
+    return gen_seg_seq_self_intersections(segGen1, intersection_fun=intersection_fun, preloaded_seg_history=segList0, freeze_seg_history=True, gap_size=0, sort_by_time=False, combine_colinear=False) 
+
+assert_equal(list(gen_path_pair_mutual_intersections([1+2j, 3+2j, 30+2j, 30+3j, 29+3j, 29+1j], [2+1j, 2+3j, 2+30j, 3+30j, 3+29j, 1+29j], intersection_fun=SegmentGeometry.segment_intersection)), [2+2j])
+
+
+print("tests needed for path pair windowed mutual intersections.")
+def gen_path_pair_windowed_mutual_intersections(point_seq_0, point_seq_1, intersection_fun=None, window_distance=None, skip_count=0):
+    assert window_distance >= 1
+    assert 0 <= skip_count < window_distance # this window distance test I'm not so sure about.
+    segGenPair = [gen_track_previous_full(pointSeq, allow_waste=True) for pointSeq in (point_seq_0, point_seq_1)]
+    segWindowGenPair = [gen_track_recent_trimmed(segGen, count=window_distance+1) for segGen in segGenPair]
+    for leftWindow, rightWindow in izip(*segWindowGenPair):
+        leftOnRightGen = (intersection_fun(leftWindow[0], otherSeg) for otherSeg in rightWindow[skip_count:])
+        rightOnLeftGen = (intersection_fun(rightWindow[0], otherSeg) for otherSeg in leftWindow[max(skip_count, 1):])
+        intersectionGen = (item for item in itertools.chain(leftOnRightGen, rightOnLeftGen) if item is not None)
+        for intersection in intersectionGen:
+            yield intersection
+        
+
+
+
+
+
+
+
+
 """
 def gen_path_self_non_intersections(journey, intersection_fun=None): # code duplication, but there's no other fast way.
     knownSegs = []
@@ -807,11 +847,11 @@ class GridSettings:
             raise CoordinateError("near-infinity can never be a list index!")
         if x < 0 or y < 0:
             raise CoordinateError("negatives not allowed here.")
-        if y > len(data):
-            raise CoordinateError("y.")
+        if y >= len(data):
+            raise CoordinateError("y is too high.")
         row = data[y]
-        if x > len(row):
-            raise CoordinateError("x.")
+        if x >= len(row):
+            raise CoordinateError("x is too high.")
         return row[x]
         
     def iter_cell_whole_coords(self, range_descriptions=None, swap_iteration_order=False):
@@ -860,7 +900,6 @@ class Echo:
 
 
     
-    
 def vec_add_vec_masked(vec0, vec1, mask):
     for i in range(len(vec0)):
         if mask[i]:
@@ -883,21 +922,47 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 
+
+
+
+
+
+
+
+# shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
+"""
+zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
+zjfiJourneyToAnalyze = sortedByAbsJourneySelfIntersections
+# zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]  assert escape_radius==2.0
+zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
+zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
+"""
+
+
+
+
+
+
 @measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None):
     SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
-    assert None not in (iter_limit, point_limit, init_formula, yield_formula, esc_test, iter_formula, esc_exceptions, buddha_type, banded)
+    assert None not in {iter_limit, point_limit, init_formula, yield_formula, esc_test, iter_formula, esc_exceptions, buddha_type, banded}
+    assert camera.screen_settings.grid_size == screen.get_size()
+    if w_int is not None:
+        assert False, "not written right now!"
+        # w = w_step*w_int
+        # w_compliment = 1.0-w
     # top(RallGincrvsleftBincivsleft)bottom(up)
     # polarcross(RseedouterspokeGseedhorizlegBseedvertleg)
     # journeyAndDecaying(0.5feedback)MeanSeqLadderRungPolarCross
     # test_bb_8xquarterbevel
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_norm_crossTS_cross_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula)
+    # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_windowedRectcross_windowdist(R5G13B29)".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, w_step, w_int)
     viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
-    assert camera.screen_settings.grid_size == screen.get_size()
     print("output name is {}.".format(repr(output_name)))
     
     escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", init_formula=init_formula, yield_formula=yield_formula, esc_test=esc_test, iter_formula=iter_formula)
@@ -905,8 +970,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     
     def specializedDraw():
         draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-    
-    # drawingStats = {"dotCount": 0, "drawnDotCount":0}
+
     
     pixelWidth = camera.screen_settings.cell_size.real
     if not pixelWidth < 0.1:
@@ -917,25 +981,24 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     
     def pointToVisitCountMatrixCell(point):
         return camera.screen_settings.complex_to_item(visitCountMatrix, point, centered=False)
+        
     def drawPointUsingMask(mainPoint=None, mask=None):
-        # drawingStats["dotCount"] += 1
         try:
             vec_add_scalar_masked(pointToVisitCountMatrixCell(mainPoint), count_scale, mask)
-            # drawingStats["drawnDotCount"] += 1
         except CoordinateError:
             pass # drawnDotCount won't be increased.
+            
     def drawZippedPointsToChannels(mainPoints=None):
         assert len(mainPoints) == 3, "what?"
         for i, currentPoint in enumerate(mainPoints):
             if currentPoint is None:
                 continue
-            # drawingStats["dotCount"] += 1
             try:
                 currentCell = pointToVisitCountMatrixCell(currentPoint)
                 currentCell[i] += count_scale
-                # drawingStats["drawnDotCount"] += 1
             except CoordinateError:
                 pass # drawnDotCount won't be increased.
+                
     def drawPointUsingComparison(mainPoint=None, comparisonPoint=None):
         drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
     
@@ -943,13 +1006,13 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     
     visitPointListEcho = Echo(length=2)
     
-    cellDescriptionGen = camera.seed_settings.iter_cell_descriptions(centered=False)
-    
     print("done initializing.")
     
-    for i, (x, y, seed) in enumerate(cellDescriptionGen):
+    for i, (x, y, seed) in enumerate(camera.seed_settings.iter_cell_descriptions(centered=False)):
         
         if (x==0):
+            if do_top_half_only and (y >= camera.seed_settings.grid_size[1]//2):
+                break
             if banded and (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
                 SET_LIVE_STATUS("drawing...")
                 specializedDraw()
@@ -960,7 +1023,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             if CAPTION_RATE_LIMITER.get_judgement():
                 SET_LIVE_STATUS("{}of{}".format(y, camera.seed_settings.grid_size[1]))
                 
-        # old: journey = journeyFun(seed); constrainedJourney = [item for item in gen_constrain_journey(journey, iter_limit, escape_radius)] ...
+        if skip_origin and (seed == 0j):
+            visitPointListEcho.push([])
+            continue
+        
         constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), 0, iter_limit+1), esc_exceptions))
         
         if buddha_type == "jbb":
@@ -974,25 +1040,33 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             else:
                 assert False, "invalid buddha type {}.".format(buddha_type)
         
-        if not seedIsInSet:
+        if (not seedIsInSet):
             visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
             continue
         else:
-            normedJourney = (get_normalized(item, undefined_result=0) for item in constrainedJourney)
+            normedSeed = get_normalized(seed, undefined_result=0j)
+            if skip_origin:
+                assert normedSeed != 0j
+                
+            # normedJourneyMinusNormedC = gen_suppress_exceptions(((w_compliment*item+w*get_normalized(item, undefined_result=0j))-(w_compliment*0+w*normedSeed) for item in constrainedJourney), (ZeroDivisionError,))
             
+            # normedJourneyMinusNormedCStagedSelfIntersections = normedJourneyMinusNormedC
+            # normedJourneyMinusNormedCStagedSelfIntersections = gen_path_self_intersections(normedJourneyMinusNormedCStagedSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False, combine_colinear=False)
+            
+            # normedJourneyStagedSelfIntersections = gen_path_self_intersections(normedJourneyStagedSelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False, combine_colinear=False)
+            pointGens = [gen_path_pair_windowed_mutual_intersections(constrainedJourney, constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection, window_distance=windowDist, skip_count=2) for windowDist in (5,13,29)]
+            #print(pointGens)
+            zippedPointGen = izip_longest(*pointGens)
+            #print(zippedPointGen)
+            #print(list(zippedPointGen
             # quarterbeveledJourney = gen_path_seg_quarterbevel_12x(constrainedJourney)
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            normedJourneySelfIntersections = gen_path_self_intersections(normedJourney, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True, combine_colinear=True)
-            normedJourneyDoubleSelfIntersections = gen_path_self_intersections(normedJourneySelfIntersections, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
-            
             # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
             # modifiedJourney = (point-seed for point in constrainedJourney[1:])
             # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
-            
-            # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
             
             #gspFromOriginJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_shortest_path_order(gspFromOriginJourney); assert gspFromOriginJourney[0] == 0
             #gspFromOriginJourneySelfIntersections = gen_path_self_intersections(gspFromOriginJourney, intersection_fun=SegmentGeometry.segment_intersection)
@@ -1003,23 +1077,16 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             # sortedBySeedmanhdistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeedmanhdistJourney, key=(lambda pt: SegmentGeometry.complex_manhattan_distance(seed, pt))); assert sortedBySeedmanhdistJourney[0]==seed
             # sortedBySeedmanhdistJourneySelfIntersections = gen_path_self_intersections(sortedBySeedmanhdistJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            """
-            zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
-            zjfiJourneyToAnalyze = sortedByAbsJourneySelfIntersections
-            # zjfiFoundationSegsToUse = [(complex(0,0), seed), (seed, zjfiJourneyToAnalyze[-1]), (complex(0,0), zjfiJourneyToAnalyze[-1])]  assert escape_radius==2.0
-            zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(seed)), (complex(0,seed.imag), seed), (complex(seed.real,0), seed)]; assert camera.view.size.real < 10, "does a new spoke length for foundation tests need to be chosen?"
-            zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
-            """
-            
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(normedJourneyDoubleSelfIntersections, 0, point_limit), (ProvisionError,))
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(zippedPointGen, 0, point_limit), (ProvisionError,))
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
-        
+        #print(visitPointListEcho.current)
         for ii, currentItem in enumerate(visitPointListEcho.current):
-            # drawZippedPointsToChannels(currentItem)
+            #print(currentItem)
+            drawZippedPointsToChannels(currentItem)
             # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
+            # drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
         
         # differential mode:
         """
@@ -1070,6 +1137,18 @@ def enumerate_to_depth(data, depth=None):
                 yield (i,) + longItem
 assert_equal(list(enumerate_to_depth([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
 assert_equal(list(enumerate_to_depth([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
+
+
+def iterate_to_depth(data, depth=None):
+    assert depth > 0
+    if depth == 1:
+        for item in data: # return can't be used because yield appears in other branch. This does NOT produce error messages in python 3.8.10.
+            yield item
+    else:
+        for item in data:
+            for subItem in iterate_to_depth(item, depth=depth-1):
+                yield subItem
+assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
 
 
 def check_bb_containedness(argless_itercount_fun=None, iter_limit=None, buddhabrot_set_type=None):
@@ -1158,14 +1237,7 @@ class Dummies(Enum):
 """
 
 
-def summon_cactus(message, cacti=dict()):
-    if message in cacti:
-        return cacti[message]
-    else:
-        cacti[message] = type(message, (), dict())()
-        if len(cacti) >= 64 and (math.log(len(cacti),2) % 1.0 == 0.0):
-            print("summon_cactus: warning: {} unique cacti sure is a lot. Is memory being wasted by their inadvisable mass-production? If not, adjust the warning threshold.".format(len(cacti)))
-        return cacti[message]
+
         
 
 NotTracked = summon_cactus("NotTracked")
@@ -1205,10 +1277,17 @@ def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
     
 
 @measure_time_nicknamed("do_panel_buddhabrot")
-def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None):
-    assert iter_limit is not None
+def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None, skip_zero_iter_image=False, w_int=None, w_step=None):
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
+    assert iter_limit is not None
+    if output_iter_limit is None:
+        output_iter_limit = iter_limit
+        print("output_iter_limit defaulting to value of iter_limit, which is {}.".format(iter_limit))
+    if w_int is not None: # duplicate of nonpanel code, do not touch.
+        assert False
+        # w = w_step*w_int
+        # w_compliment = 1.0-w
     # assert blank_on_output, "not ready yet? also remove this assertion in loop body if ready, to avoid a disappointing crash after panel init!"
     
     # outputColorSummary = "R012outofsetneighG3outofsetneighB4outofsetneigh"
@@ -1216,8 +1295,10 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     # neighborPathSimultaneousCross
     # 4NeighborZShareChooseNearestToC 4NeighborZShareChooseRandom
     # zpos(RdisttocGrBi)
-    # (headstart(32)) 2linsub_agletized
-    setSummaryStr = "panel{}_{}_splitlessSplice_norm_cross_ReithrGrowCcol".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type)
+    # 2linsub_agletized
+    # pow(wf(z,normz),wf(1,normc))_(w={}*{})
+    # _post(pow(normz,normc))
+    setSummaryStr = "panel{}_{}_splitlessSlice_adjMutuRectcross_windowdistance(R5G10C15)".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type, w_step, w_int)
     viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSup{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blank" if blank_on_output else "noBlank"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
@@ -1242,6 +1323,15 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
     def drawPointSeqUsingMask(inputSeq, mask=None):
         for point in inputSeq:
             drawPointUsingMask(mainPoint=point, mask=mask)
+   
+    def drawZippedPointSeq(inputSeq):
+        for item in inputSeq:
+            for i in range(3):
+                if item[i] is not None:
+                    try:
+                        pointToVisitCountMatrixCell(item[i])[i] += count_scale
+                    except CoordinateError:
+                        pass
     
     
     
@@ -1275,6 +1365,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
         print("no headstart to give.")
     else:
         print("giving headstart of {}...".format(headstart))
+        _startNotNone = sum(panelCell[i_CURRENT_Z] is not None for panelCell in iterate_to_depth(panel, depth=2))
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
             if x == 0:
                 if STATUS_RATE_LIMITER.get_judgement():
@@ -1283,15 +1374,16 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
             assert localHeadstart >= 0 and isinstance(localHeadstart, int)
             for i in range(localHeadstart):
                 iteratePanelCell(panelCell)
-        print("done giving headstart.")
+        _endNotNone = sum(panelCell[i_CURRENT_Z] is not None for panelCell in iterate_to_depth(panel, depth=2))
+        print("done giving headstart. {}% of z values that started non-None remain non-None.".format(round(100*_endNotNone/float(_startNotNone), ndigits=3)))
     
     
     
-    for iter_index in range(0, iter_limit):
+    for iter_index in range(0, output_iter_limit):
     
         # SHOW
         SET_LIVE_STATUS("n={}".format(iter_index))
-        if (iter_index % output_interval_iters) == 0:
+        if ((iter_index % output_interval_iters) == 0) and not (iter_index == 0 and skip_zero_iter_image):
             specializedDrawAndScreenshot(visitCountMatrix, name_prefix=output_name+"{}of{}itrs_".format(iter_index, iter_limit))
             blankIfNeeded(visitCountMatrix)
             # assert blank_on_output, "not ready yet?"
@@ -1338,23 +1430,45 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_interval_iters=1, blank_
                     drawPointUsingComparison(mainPoint=intersectionPoint, comparisonPoint=panelCell[i_SEED])
         """
         
-        def drawFromPointSeqInLoop(inputSeq, mask=None):
+        """
+        def drawFromCellSeqInLoop(inputSeq, mask=None, include_unprocessed=None):
+            assert include_unprocessed is not None
             # ptListGen = split_to_lists(inputSeq, trigger_fun=(lambda thing: thing is None), include_empty=False)
             # agletizedPtListGen = (ptList[:-1][::2]+[ptList[-1]] for ptList in ptListGen)
             # ptSeq = itertools.chain.from_iterable(agletizedPtListGen)
-            pointSeq = [item for item in inputSeq if item is not None]
-            normPointSeq = [get_normalized(item, undefined_result=0) for item in pointSeq]
-            normPointSeqSelfIntersections = gen_path_self_intersections(normPointSeq, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            
+            zcPairGen = ((cell[i_CURRENT_Z], cell[i_SEED]) for cell in inputSeq if cell[i_CURRENT_Z] is not None and cell[i_CURRENT_Z] != 0j)
+            moddedPointGen = ((w_compliment*zcPair[0]+w*get_normalized(zcPair[0], undefined_result=0j))**(w_compliment*1+w*get_normalized(zcPair[1], undefined_result=0j)) for zcPair in zcPairGen)
+            
+            #normPointSeq = [get_normalized(item, undefined_result=0) for item in pointSeq]
+            moddedPointSeqSelfIntersections = gen_path_self_intersections(moddedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
             # pointSeqDoubleSelfIntersections = gen_path_self_intersections(pointSeqSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection)
             # newBasisPointSeq = gen_change_basis_using_embedded_triplets(pointSeq)
-            drawPointSeqUsingMask(normPointSeqSelfIntersections, mask=mask)
-                    
+            drawPointSeqUsingMask(moddedPointSeqSelfIntersections, mask=mask)
+            if include_unprocessed:
+                drawPointSeqUsingMask(moddedPointSeq, mask=[True,False,False])
+                
         for y in range(len(panel)):
-            zrow = [panel[y][x][i_CURRENT_Z] for x in range(len(panel[y]))]
-            drawFromPointSeqInLoop(zrow, mask=[True, True, False])
+            cellRow = [panel[y][x] for x in range(len(panel[y]))] # could be faster.
+            drawFromCellSeqInLoop(cellRow, mask=[True, True, False], include_unprocessed=False)
         for x in range(len(panel[0])):
-            zcol = [panel[y][x][i_CURRENT_Z] for y in range(len(panel))]
-            drawFromPointSeqInLoop(zcol, mask=[True, False, True])
+            cellCol = [panel[y][x] for y in range(len(panel))]
+            drawFromCellSeqInLoop(cellCol, mask=[True, False, True], include_unprocessed=False)
+        """
+        def drawFromAdjacentCellSeqsInLoop(cellSeq0, cellSeq1):
+            pointSeq0, pointSeq1 = [[cell[i_CURRENT_Z] for cell in cellSeq if cell[i_CURRENT_Z] is not None] for cellSeq in (cellSeq0, cellSeq1)]
+            mutualIntersectionsGens = [gen_path_pair_windowed_mutual_intersections(pointSeq0, pointSeq1, intersection_fun=SegmentGeometry.segment_intersection, window_distance=windowDist) for windowDist in (5, 10, 15)]
+            zippedPointsGen = izip_longest(*mutualIntersectionsGens)
+            drawZippedPointSeq(zippedPointsGen)
+            
+        for y in range(1, len(panel)):
+            cellRow0, cellRow1 = [[panel[yy][x] for x in range(len(panel[0]))] for yy in (y-1, y)]
+            drawFromAdjacentCellSeqsInLoop(cellRow0, cellRow1)
+        for x in range(1, len(panel[0])):
+            cellCol0, cellCol1 = [[panel[y][xx] for y in range(len(panel))] for xx in (x-1, x)]
+            drawFromAdjacentCellSeqsInLoop(cellCol0, cellCol1)
+                    
+            
         
         # hotel code:
         """
@@ -1440,15 +1554,17 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 def SET_LIVE_STATUS(status_text):
     try:
-        pygame.display.set_caption("z. " + status_text)
+        pygame.display.set_caption("z. " + status_text + " " + OUTPUT_FOLDER)
     except Exception as e:
         print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
 
 def save_screenshot_as(*args, **kwargs):
     pygame.display.flip()
     save_surface_as(screen, *args, **kwargs)
+    pygame.display.flip()
     
 def draw_squished_ints_to_screen(*args, **kwargs):
+    pygame.display.flip()
     draw_squished_ints_to_surface(screen, *args, **kwargs)
     pygame.display.flip()
 
@@ -1457,7 +1573,8 @@ def draw_squished_ints_to_screen(*args, **kwargs):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((4096, 4096))
+screen = pygame.display.set_mode((1024, 1024))
+SET_LIVE_STATUS("loading...")
 IMAGE_BAND_COUNT = (
     4 if screen.get_size()[1] <= 128 else (
     16 if screen.get_size()[1] <= 512 else
@@ -1467,11 +1584,12 @@ assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oA/"
+OUTPUT_FOLDER = "oG/panel/3/"
 
 
 
 
+@measure_time_nicknamed("main")
 def main():
 
     #test_abberation([0], 0, 16384)
@@ -1483,14 +1601,18 @@ def main():
     # for steppedVal in ComplexGeometry.float_range(1, 8, 0.03125):
     # z=z**2+((-1)**n)*c
     # init_formula="z,zd,zs,w=c,c,c,1", yield_formula="z.real*zd+z.imag*(zs*(w**-1))", esc_test="abs(z)>16", iter_formula="z=z*z+c;zd,zs,w=0.5*zd+0.5*z,zs+z,w+1",
+    # init_formula="z,nc=c,norm(c)*0.0125*{}".format(v), yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+nc",
+    # init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c",
+    # for v in range(0, 161):
+    """
+    wStepCount = 128 # 256 is good
+    for wInt in range(1*wStepCount+1):
+    """
+    # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=4096, point_limit=4096, count_scale=0.5,
+    #    init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) # w_int=wInt, w_step=1.0/wSteps)
     
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=512, point_limit=512, count_scale=2,
-        init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError),
-        buddha_type="bb", banded=True)
-    
-    # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=8, escape_radius=16.0, headstart="16")
+    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=1, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
-    PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
 
 
 
@@ -1504,6 +1626,7 @@ print("done testing.")
 
 if __name__ == "__main__":
     main()
+    PygameDashboard.stall_pygame(preferred_exec=THIS_MODULE_EXEC)
     print("""                   # #
      ##            # #        ##  #
     #    ### ###  ## ##      #    #

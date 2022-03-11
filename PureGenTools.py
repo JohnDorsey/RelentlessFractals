@@ -1,5 +1,7 @@
+import itertools
 
-def _assert_equal(thing0, thing1): # a copy.
+
+def _assert_equal(thing0, thing1): # a copy to prevent circular imports.
     assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
 
 import collections
@@ -8,7 +10,10 @@ import collections
 
 class ProvisionError(Exception):
     pass
-        
+
+class MysteriousError(Exception):
+    # don't catch this. Just identify its cause and replace it with a better exception. and then maybe catch it.
+    pass
 
 
 def peek_first_and_iter(input_seq):
@@ -19,6 +24,19 @@ def peek_first_and_iter(input_seq):
         raise ProvisionError()
     return (first, inputGen)
 
+
+
+
+testZip = zip("ab","cd")
+izip = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
+testZip2 = izip("ab","cd")
+assert (iter(testZip2) is iter(testZip2)) and (not isinstance(testZip2, list)), "can't izip?"
+del testZip, testZip2
+
+try:
+    izip_longest = itertools.izip_longest
+except AttributeError:
+    izip_longest = itertools.zip_longest
 
     
 
@@ -70,11 +88,11 @@ assert (list(gen_track_previous(range(5,10))) == [(None,5),(5,6),(6,7),(7,8),(8,
 def gen_track_previous_full(input_seq, allow_waste=False):
     try:
         previousItem, inputGen = peek_first_and_iter(input_seq)
-    except IndexError:
+    except ProvisionError:
         if allow_waste:
             return
         else:
-            raise IndexError("can't fill! not enough items!")
+            raise MysteriousError("can't fill! not enough items!")
     for currentItem in inputGen:
         yield (previousItem, currentItem)
         previousItem = currentItem
@@ -83,14 +101,25 @@ assert (list(gen_track_previous_full(range(5,10))) == [(5,6), (6,7), (7,8), (8,9
 
 def gen_track_recent(input_seq, count=None, default=None):
     history = collections.deque([default for i in range(count)])
-    for i, item in enumerate(input_seq):
+    for item in input_seq:
         history.append(item)
         history.popleft()
         yield tuple(history)
-assert list(gen_track_recent("abcdef", count=3)) == [(None, None, "a"), (None, "a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")]
-        
+assert list(gen_track_recent("abcdef", count=3, default=999)) == [(999, 999, "a"), (999, "a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")]
 
-def gen_track_recent_full(input_seq, count=None):
+
+
+def gen_track_recent_trimmed(input_seq, count=None):
+    history = collections.deque([])
+    for item in input_seq:
+        history.append(item)
+        while len(history) > count:
+            history.popleft()
+        yield tuple(history)
+_assert_equal(list(gen_track_recent_trimmed("abcdef", count=3)), [("a",), ("a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")])
+
+
+def gen_track_recent_full(input_seq, count=None, allow_waste=False):
     assert count >= 2
     result = gen_track_recent(input_seq, count=count)
     """
@@ -103,41 +132,20 @@ def gen_track_recent_full(input_seq, count=None):
             raise IndexError("could not!?")
     assert i == 1
     """
-    waste = tuple(None for i in range(count))
-    while waste.count(None) > 1:
+    trash = tuple(None for i in range(count))
+    while trash.count(None) > 1:
         try:
-            waste = next(result)
+            trash = next(result)
         except StopIteration:
-            raise IndexError("could not!?")
-    assert waste.count(None) == 1
-    assert waste[0] is None
+            if allow_waste:
+                return ()
+            else:
+                raise MysteriousError("could not do the thing!")
+    assert trash.count(None) == 1
+    assert trash[0] is None
     return result
 assert (list(gen_track_recent_full("abcdef", count=3)) == [("a","b","c"),("b","c","d"),("c","d","e"),("d","e","f")])
+assert (list(gen_track_recent_full("abc", count=5, allow_waste=True)) == [])
     
     
     
-    
-                
-
-        
-"""
-def gen_track_previous_tuple_flatly(input_seq):
-    previousTuple = None
-    for item in input_seq:
-        if not isinstance(item, tuple):
-            item = (item,)
-        if previousTuple is None:
-            yield (None,)*len(item) + item
-        else:
-            yield previousTuple + item
-        previousTuple = item
-        assert isinstance(previousTuple, tuple)
-        
-        
-def enumerate_flatly(input_seq, start=0):
-    for i, item in enumerate(input_seq, start=start):
-        if isinstance(item, tuple):
-            yield (i,) + item
-        else:
-            yield (i, item)
-"""
