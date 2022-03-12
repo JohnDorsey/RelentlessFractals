@@ -21,11 +21,11 @@ from TestingBasics import assert_equal, summon_cactus
 
 from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized, float_range
 import SegmentGeometry
-from SegmentGeometry import find_left_min, lerp
+from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip, izip_longest, gen_track_recent_trimmed
+from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -241,6 +241,14 @@ cannot work. modifies original even if deepcopies are made.
 
 
 
+
+
+
+
+
+
+
+
 _mandelMethodsSourceStrs={
         "c_to_mandel_itercount_fast":"""
 def c_to_mandel_itercount_fast(c, iter_limit):
@@ -322,10 +330,7 @@ def c_must_be_in_mandelbrot(c):
             return True
     return False
 """
-        
-
-      
-        
+     
 """
 def gen_constrain_journey(journey, iter_limit, escape_radius):
     # assert escape_radius <= 256, "this may break seg intersections."
@@ -337,6 +342,16 @@ def gen_constrain_journey(journey, iter_limit, escape_radius):
             return
     assert False, "incomplete journey."
 """
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -381,6 +396,12 @@ def count_float_local_minima(input_seq): # does not recognize any minimum with m
                 
 
     
+
+
+
+
+
+
 
     
 def gen_seg_seq_intersections_with_seg(seg_seq, reference_seg, intersection_fun=None):
@@ -453,6 +474,12 @@ def gen_path_pair_windowed_mutual_intersections(point_seq_0, point_seq_1, inters
         for intersection in intersectionGen:
             yield intersection
         
+
+
+
+
+
+
 
 
 
@@ -592,6 +619,10 @@ def gen_change_basis_using_zipped_triplets(input_seq):
     raise NotImplementedError()
 
 
+class SetMathProvisionError(Exception):
+    pass
+
+
 def mean(input_seq):
     sumSoFar = 0
     i = -1
@@ -599,22 +630,125 @@ def mean(input_seq):
         sumSoFar += item
     itemCount = i + 1
     if itemCount == 0:
-        return 0
+        raise SetMathProvisionError("This used to return 0 here. Is that allowed?")
+        # return 0
     assert itemCount > 0
     return sumSoFar / float(itemCount)
+    
 assert mean([3,4,5]) == 4
 assert mean([1,1,1,5]) == 2
 assert mean([1,2]) == 1.5
 
 
-def gen_linear_downsample_using_mean(input_seq, count=None):
+def median(input_seq):
+    inputList = sorted(input_seq)
+    if len(inputList) == 0:
+        raise SetMathProvisionError()    
+    centerIndex = len(inputList)//2
+    if len(inputList) % 2 == 1:
+        return inputList[centerIndex]
+    else:
+        assert len(inputList) % 2 == 0
+        return (inputList[centerIndex]+inputList[centerIndex-1])/2.0
+        
+assert median([1,2,3,50,400,500,600]) == 50
+
+
+
+
+def complex_decomposed_median(input_seq):
+    inputList = [item for item in input_seq]
+    realMedian = median(reals_of(inputList))
+    imagMedian = median(imags_of(inputList))
+    return complex(realMedian, imagMedian)
+    
+assert complex_decomposed_median([1+600j,4+500j,5+55j,9+400j,125+43j,126+44j,127+45j]) == 9+55j
+
+
+
+def farcancel_median(input_seq, _enumerateToDepthTwoPacked=(lambda thing: enumerate_to_depth_packed(thing, depth=2))):
+    inputList = [item for item in input_seq]
+    
+    if len(inputList) == 0:
+        raise SetMathProvisionError()
+    if len(inputList) == 1:
+        return inputList[0]
+    if len(inputList) == 2:
+        return mean(inputList)
+    
+    distances = [[abs(itemA-itemB) for itemB in inputList] for itemA in inputList]
+    descendingDistanceSegs = sorted(_enumerateToDepthTwoPacked(distances), key=(lambda thing: -thing[1]))
+    demirroredDescendingDistanceSegs = [item for item in descendingDistanceSegs if item[0][0] < item[0][1]]
+    
+    lastValidSegment = None
+    cancelledIndicesSet = set()
+    for segment in demirroredDescendingDistanceSegs:
+        if segment[1] == math.inf:
+            raise NotImplementedError("can't handle infinite distances yet!")
+        if segment[0][0] in cancelledIndicesSet or segment[0][1] in cancelledIndicesSet:
+            continue
+        else:
+            if lastValidSegment is not None:
+                assert segment[1] <= lastValidSegment[1]
+            lastValidSegment = segment
+            for index in segment[0]:
+                assert index not in cancelledIndicesSet
+                cancelledIndicesSet.add(index)
+                
+    assert lastValidSegment is not None
+    if len(cancelledIndicesSet) == len(inputList):
+        lastValidSegmentEndpoints = [inputList[index] for index in lastValidSegment[0]]
+        assert len(lastValidSegmentEndpoints) == 2
+        assert abs(lastValidSegmentEndpoints[1] - lastValidSegmentEndpoints[0]) == lastValidSegment[1]
+        return mean(lastValidSegmentEndpoints)
+    else:
+        assert len(cancelledIndicesSet) == len(inputList)-1
+        for i, point in enumerate(inputList):
+            if i not in cancelledIndicesSet:
+                return point
+        assert False, "failed somehow."
+    assert False
+    
+assert_equal(farcancel_median([1+1j,3+3j,7+7j,5+5j,4+4j,2+2j,6+6j]), 4+4j)
+assert_equal(farcancel_median([100+100j,300+300j,100+105j,100+95j,-200-200j,110+110j,90+90j]), 100+100j)
+assert_equal(farcancel_median([0+1j,0+0j, complex(100,100)]), 0+1j)
+        
+        
+        
+def gen_linear_downsample(input_seq, count=None, analysis_fun=None):
     inputGen = iter(input_seq)
     while True:
-        nextBucket = [item for item in itertools.islice(inputGen, 0, count)]
-        yield mean(nextBucket)
-        if len(nextBucket) < count:
+        currentBucket = [item for item in itertools.islice(inputGen, 0, count)]
+        if len(currentBucket) == 0:
+            return
+        yield analysis_fun(currentBucket)
+        if len(currentBucket) < count:
             return
     assert False
+
+assert_equal(list(gen_linear_downsample([1,3,2,4,3,5,10,20], count=2, analysis_fun=mean)), [2,3,4,15])
+
+
+
+
+
+
+def gen_shrinking_selections_as_lists(input_seq):
+    inputList = [item for item in input_seq]
+    combinationTupleListGen = (list(itertools.combinations(inputList, size)) for size in range(len(inputList),0,-1))
+    selectionTupleGen = itertools.chain.from_iterable(combinationTupleListGen)
+    return selectionTupleGen
+
+assert list(gen_shrinking_selections_as_lists(range(0,3))) == [(0,1,2),(0,1),(0,2),(1,2),(0,),(1,),(2,)]
+
+
+def gen_shrinking_selection_analyses(input_seq, analysis_fun=None):
+    return (analysis_fun(selection) for selection in gen_shrinking_selections_as_lists(input_seq))
+
+
+
+
+
 
 
 
@@ -929,6 +1063,18 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 
+# modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
+# modifiedJourney = (point-seed for point in constrainedJourney[1:])
+# recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
+
+#gspFromOriginJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_shortest_path_order(gspFromOriginJourney); assert gspFromOriginJourney[0] == 0
+#gspFromOriginJourneySelfIntersections = gen_path_self_intersections(gspFromOriginJourney, intersection_fun=SegmentGeometry.segment_intersection)
+
+# sortedByAbsJourney, constrainedJourney = (constrainedJourney, None); list.sort(sortedByAbsJourney, key=abs)
+# sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
+
+# sortedBySeedmanhdistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeedmanhdistJourney, key=(lambda pt: SegmentGeometry.complex_manhattan_distance(seed, pt))); assert sortedBySeedmanhdistJourney[0]==seed
+# sortedBySeedmanhdistJourneySelfIntersections = gen_path_self_intersections(sortedBySeedmanhdistJourney, intersection_fun=SegmentGeometry.segment_intersection)
 
 # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
 """
@@ -944,8 +1090,8 @@ zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(z
 
 
 
-@measure_time_nicknamed("do_buddhabrot")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None):
+@measure_time_nicknamed("do_buddhabrot", end="\n\n")
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None, custom_window_size=None):
     SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
     assert None not in {iter_limit, point_limit, init_formula, yield_formula, esc_test, iter_formula, esc_exceptions, buddha_type, banded}
@@ -961,7 +1107,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
     # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_windowedRectcross_windowdist(R5G13B29)".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, w_step, w_int)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_pathShrinkingSelectionAnalyses_mean_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, custom_window_size)
     viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -987,7 +1133,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
         try:
             vec_add_scalar_masked(pointToVisitCountMatrixCell(mainPoint), count_scale, mask)
         except CoordinateError:
-            pass # drawnDotCount won't be increased.
+            pass
             
     def drawZippedPointsToChannels(mainPoints=None):
         assert len(mainPoints) == 3, "what?"
@@ -998,7 +1144,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
                 currentCell = pointToVisitCountMatrixCell(currentPoint)
                 currentCell[i] += count_scale
             except CoordinateError:
-                pass # drawnDotCount won't be increased.
+                pass
                 
     def drawPointUsingComparison(mainPoint=None, comparisonPoint=None):
         drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
@@ -1055,39 +1201,31 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             # normedJourneyMinusNormedCStagedSelfIntersections = gen_path_self_intersections(normedJourneyMinusNormedCStagedSelfIntersections, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False, combine_colinear=False)
             
             # normedJourneyStagedSelfIntersections = gen_path_self_intersections(normedJourneyStagedSelfIntersections, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False, combine_colinear=False)
-            pointGens = [gen_path_pair_windowed_mutual_intersections(constrainedJourney, constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection, window_distance=windowDist, skip_count=2) for windowDist in (5,13,29)]
-            #print(pointGens)
-            zippedPointGen = izip_longest(*pointGens)
-            #print(zippedPointGen)
-            #print(list(zippedPointGen
-            # quarterbeveledJourney = gen_path_seg_quarterbevel_12x(constrainedJourney)
+            
+            # pointGens = [gen_path_pair_windowed_mutual_intersections(constrainedJourney, constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection, window_distance=windowDist, skip_count=2) for windowDist in (5,13,29)]
+            # pointGens = [gen_linear_downsample_using_mean(constrainedJourney, count=windowSize) for windowSize in (17,19,23)]
+            # zippedPointGen = izip_longest(*pointGens)
+            
+            # downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, fun=complex_decomposed_median)
+            # downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            
+            modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
+            
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            # modifiedJourney = gen_recordbreakers(journeySelfIntersections, score_fun=abs)
-            # modifiedJourney = (point-seed for point in constrainedJourney[1:])
-            # recordBreakersJourney = gen_multi_recordbreakers(constrainedJourney[1:], score_funs=[abs, inv_abs_of, (lambda inputVal: get_complex_angle(ensure_nonzero(inputVal)))])
             
-            #gspFromOriginJourney, constrainedJourney = (constrainedJourney, None); sort_to_greedy_shortest_path_order(gspFromOriginJourney); assert gspFromOriginJourney[0] == 0
-            #gspFromOriginJourneySelfIntersections = gen_path_self_intersections(gspFromOriginJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            
-            # sortedByAbsJourney, constrainedJourney = (constrainedJourney, None); list.sort(sortedByAbsJourney, key=abs)
-            # sortedByAbsJourneySelfIntersections = gen_path_self_intersections(sortedByAbsJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            
-            # sortedBySeedmanhdistJourney, constrainedJourney = (constrainedJourney[1:], None); list.sort(sortedBySeedmanhdistJourney, key=(lambda pt: SegmentGeometry.complex_manhattan_distance(seed, pt))); assert sortedBySeedmanhdistJourney[0]==seed
-            # sortedBySeedmanhdistJourneySelfIntersections = gen_path_self_intersections(sortedBySeedmanhdistJourney, intersection_fun=SegmentGeometry.segment_intersection)
-            
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(zippedPointGen, 0, point_limit), (ProvisionError,))
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(modifiedPointGen, 0, point_limit), (ProvisionError,))
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
         #print(visitPointListEcho.current)
         for ii, currentItem in enumerate(visitPointListEcho.current):
             #print(currentItem)
-            drawZippedPointsToChannels(currentItem)
+            # drawZippedPointsToChannels(currentItem)
             # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            # drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
+            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
         
         # differential mode:
         """
@@ -1126,30 +1264,6 @@ def quadrilateral_is_convex(points):
     return segments_intersect((points[0], points[2]), (points[1], points[3]))
 
 
-def enumerate_to_depth(data, depth=None):
-    assert depth > 0
-    if depth == 1:
-        for pair in enumerate(data): # return can't be used because yield appears in other branch. This does NOT produce error messages in python 3.8.10.
-            yield pair
-    else:
-        assert depth > 1
-        for i, item in enumerate(data):
-            for longItem in enumerate_to_depth(item, depth=depth-1):
-                yield (i,) + longItem
-assert_equal(list(enumerate_to_depth([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
-assert_equal(list(enumerate_to_depth([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
-
-
-def iterate_to_depth(data, depth=None):
-    assert depth > 0
-    if depth == 1:
-        for item in data: # return can't be used because yield appears in other branch. This does NOT produce error messages in python 3.8.10.
-            yield item
-    else:
-        for item in data:
-            for subItem in iterate_to_depth(item, depth=depth-1):
-                yield subItem
-assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
 
 
 def check_bb_containedness(argless_itercount_fun=None, iter_limit=None, buddhabrot_set_type=None):
@@ -1282,7 +1396,7 @@ def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
     
     
 
-@measure_time_nicknamed("do_panel_buddhabrot")
+@measure_time_nicknamed("do_panel_buddhabrot", end="\n\n")
 def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None, skip_zero_iter_image=False, kill_not_in_set=True, w_int=None, w_step=None):
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
@@ -1292,7 +1406,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
         output_iter_limit = iter_limit
         print("output_iter_limit defaulting to value of iter_limit, which is {}.".format(iter_limit))
     if w_int is not None: # duplicate of nonpanel code, do not touch.
-        assert False
+        assert False, "it's not prepared."
         # w = w_step*w_int
         # w_compliment = 1.0-w
     # assert blank_on_output, "not ready yet? also remove this assertion in loop body if ready, to avoid a disappointing crash after panel init!"
@@ -1566,11 +1680,6 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 
 
-def SET_LIVE_STATUS(status_text):
-    try:
-        pygame.display.set_caption("z. " + status_text + " " + OUTPUT_FOLDER)
-    except Exception as e:
-        print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
 
 def save_screenshot_as(*args, **kwargs):
     pygame.display.flip()
@@ -1582,23 +1691,28 @@ def draw_squished_ints_to_screen(*args, **kwargs):
     draw_squished_ints_to_surface(screen, *args, **kwargs)
     pygame.display.flip()
 
+def SET_LIVE_STATUS(status_text):
+    try:
+        pygame.display.set_caption("z. " + status_text + " " + OUTPUT_FOLDER)
+    except Exception as e:
+        print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
 
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((512, 512))
-SET_LIVE_STATUS("loading...")
-IMAGE_BAND_COUNT = (
-    4 if screen.get_size()[1] <= 128 else (
-    16 if screen.get_size()[1] <= 512 else
-    32))
+screen = pygame.display.set_mode((4096, 4096))
 
+COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
+OUTPUT_FOLDER = "oK/2/"
+
+
+SET_LIVE_STATUS("loading...")
+IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 512 else 32))
 assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
 
-COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oI/nondecayingmean/rectcross/1/"
+
 
 
 
@@ -1621,10 +1735,11 @@ def main():
     wStepCount = 128 # 256 is good
     for wInt in range(1*wStepCount+1):
     """
-    # do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=2), iter_limit=4096, point_limit=4096, count_scale=0.5,
-    #    init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) # w_int=wInt, w_step=1.0/wSteps)
+    # for customWindowSize in range(1,1024,8):
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=15, point_limit=65536, count_scale=1,
+        init_formula="z=c", yield_formula="z", esc_test="abs(z)>256", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) # custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
-    do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
+    # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
 
 
@@ -1661,19 +1776,17 @@ todo:
   -lap counter. improved lap timer.
   -order intersection points on a segment by time (actually distance from start of seg).
   -fixed-point geometry calculations.
-  -general:
-    -use c and escape point as a new coord space...
-    -journey pt -> journey pt <minus|divided by> mean of journey at that time.
   -path self intersection:
+    -batch with bounding rectangles. A line segment intersects a rectangle IFF ((it intersects one of that rectangle's diagonals) or (it has at least one endpoint inside the rectangle)). Also compare batch counding rectangles to each other.
     -store segment presences in quadtree. subdividing the segment is not necessary to do this.
     -refraction or reflection with previous segments.
-    -combine all intersections with a new segment using mean.
+    -combine all _intersections with a new segment_ using mean.
   -nonpanel:
     -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
     -journey smoothing by <simple splines|follower with intertia|follower with smoothly changing direction>.
   -panel:
     -drawing:
-      -self-intersections of path visiting all Z in each row and col.
+      -.
     -simulation:
       -matrix multiplication: MZ times MZ, MZ times MC, MC times MZ.
       -gravity simulation: affect and draw <all|few> paths.
@@ -1684,6 +1797,12 @@ todo:
       -make local density a simulation input. (also do this within journey for nonpanel).
       -modify c, <<warp towards|rot around> average|gravitate> within hotel.
       -draw density local maximum or minimum hotels only.
+  -done:
+    -use c and escape point as a new coord space...
+    -journey pt -> journey pt <minus|divided by> mean of journey at that time.
+    -panel:
+      -drawing:
+        -self-intersections of path visiting all Z in each row and col.
       
   
   

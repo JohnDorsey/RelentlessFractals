@@ -28,8 +28,8 @@ def peek_first_and_iter(input_seq):
 
 
 testZip = zip("ab","cd")
-izip = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
-testZip2 = izip("ab","cd")
+izip_shortest = (zip if (iter(testZip) is iter(testZip)) else itertools.izip)
+testZip2 = izip_shortest("ab","cd")
 assert (iter(testZip2) is iter(testZip2)) and (not isinstance(testZip2, list)), "can't izip?"
 del testZip, testZip2
 
@@ -149,3 +149,55 @@ assert (list(gen_track_recent_full("abc", count=5, allow_waste=True)) == [])
     
     
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+def enumerate_to_depth_unpacked(data, depth=None):
+    assert depth > 0
+    if depth == 1:
+        for pair in enumerate(data): # return can't be used because yield appears in other branch. This does NOT produce error messages in python 3.8.10.
+            yield pair
+    else:
+        assert depth > 1
+        for i, item in enumerate(data):
+            for longItem in enumerate_to_depth_unpacked(item, depth=depth-1):
+                yield (i,) + longItem
+_assert_equal(list(enumerate_to_depth_unpacked([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
+_assert_equal(list(enumerate_to_depth_unpacked([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
+
+
+
+def enumerate_to_depth_packed(data, depth=None):
+    assert depth > 0
+    if depth == 1:
+        for i, item in enumerate(data):
+            yield ((i,), item)
+    else:
+        assert depth > 1
+        for i, item in enumerate(data):
+            for subItemAddress, subItem, in enumerate_to_depth_packed(item, depth=depth-1):
+                yield ((i,)+subItemAddress, subItem)
+_assert_equal(list(enumerate_to_depth_packed([5,6,7,8], depth=1)), [((0,),5), ((1,),6), ((2,),7), ((3,),8)])
+_assert_equal(list(enumerate_to_depth_packed([[5,6],[7,8]], depth=2)), [((0,0),5), ((0,1),6), ((1,0),7), ((1,1),8)])
+
+
+
+def iterate_to_depth(data, depth=None):
+    assert depth > 0
+    if depth == 1:
+        for item in data: # return can't be used because yield appears in other branch. This does NOT produce error messages in python 3.8.10.
+            yield item
+    else:
+        assert depth > 1
+        for item in data:
+            for subItem in iterate_to_depth(item, depth=depth-1):
+                yield subItem
+_assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
+

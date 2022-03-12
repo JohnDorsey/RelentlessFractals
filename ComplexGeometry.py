@@ -320,7 +320,7 @@ def assure_conforms_to_clamp(value, limitPair):
 for testArgs in [(0,(2.1,2.2)), (2.099999,(2.1,2.2)), (2.200001,(2.1,2.2))]:
     assert raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=True)(*testArgs), testArgs
 for testArgs in [(2.1,(2.1,2.2)), (2.2,(2.1,2.2)), (2.199999,(2.1,2.2))]:
-    assert not raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=True)(*testArgs), testArgs
+    assert not raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=False)(*testArgs), testArgs
     
 
 def assure_exclusively_conforms_to_clamp(value, limitPair):
@@ -331,7 +331,7 @@ def assure_exclusively_conforms_to_clamp(value, limitPair):
 for testArgs in [(0,(2.1,2.2)), (2.099999,(2.1,2.2)), (2.1, (2.1, 2.2)), (2.200001,(2.1,2.2)), (2.2,(2.1,2.2))]:
     assert raises_instanceof(assure_exclusively_conforms_to_clamp, AssuranceError, debug=True)(*testArgs), testArgs
 for testArgs in [(2.1001,(2.1,2.2)), (2.1999,(2.1,2.2))]:
-    assert not raises_instanceof(assure_exclusively_conforms_to_clamp, AssuranceError, debug=True)(*testArgs), testArgs
+    assert not raises_instanceof(assure_exclusively_conforms_to_clamp, AssuranceError, debug=False)(*testArgs), testArgs
 
 
 

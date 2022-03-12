@@ -65,13 +65,17 @@ def assure_positive(val):
     
 
 
-def reals(input_seq):
+def reals_of(input_seq):
     for item in input_seq:
         yield item.real
         
-def imags(input_seq):
+def imags_of(input_seq):
     for item in input_seq:
         yield item.imag
+        
+
+        
+        
         
 
 def lerp(point0, point1, t):
@@ -87,8 +91,8 @@ def lerp_confined(point0, point1, t):
     
     
 
-def find_left_min(data):
-    record, itemGen = peek_first_and_iter(enumerate(data))
+def find_left_min(data, enumerator_fun=enumerate):
+    record, itemGen = peek_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] < record[1]:
             record = item
@@ -97,16 +101,16 @@ assert find_left_min([-5,-7,-2,-3,-4,5,4,3,2,1]) == (1, -7)
 assert find_left_min([9,8,7,6,5,6,7,8,9]) == (4, 5)
     
 
-def find_left_max(data):
-    record, itemGen = peek_first_and_iter(enumerate(data))
+def find_left_max(data, enumerator_fun=enumerate):
+    record, itemGen = peek_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] > record[1]:
             record = item
     return record
     
     
-def find_only_min(data):
-    record, itemGen = peek_first_and_iter(enumerate(data))
+def find_only_min(data, enumerator_fun=enumerate):
+    record, itemGen = peek_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] < record[1]:
             record = item
@@ -485,7 +489,7 @@ def seg_rect_to_polar_and_rect_space_seam_intersection(seg):
     if ComplexGeometry.SpecialAnswer.ORIGIN in resultPair:
         seamIntersection = InteractionSpecialAnswer.SEAM_TOUCH_AT_ORIGIN
     else:
-        maxThetaIndex, maxTheta = find_left_max(imags(resultPair))
+        maxThetaIndex, maxTheta = find_left_max(imags_of(resultPair))
         seamIntersection = rect_seg_seam_intersection(seg)
         if seamIntersection is not None:
             resultPair[maxThetaIndex] -= 2j*math.pi # should this still be done?
@@ -539,7 +543,7 @@ def seg_rect_to_polar_positive_theta_fragments(seg):
             assert abs(pSeamIntersection.imag) <= COMPLEX_EQUALITY_DISTANCE, pSeamIntersection
             pSeamIntersection = complex(pSeamIntersection.real, max(pSeamIntersection.imag, 0.0))
             
-            psegImagMinIndex, psegImagMin = find_only_min(imags(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
+            psegImagMinIndex, psegImagMin = find_only_min(imags_of(pseg)) # the index will identify which half of the split segment is in the negative and must be shifted.
             if pseg[0].imag == pseg[1].imag:
                 raise NotImplementedError("how should this be handled?")
             if psegImagMin == 0.0:
@@ -550,7 +554,7 @@ def seg_rect_to_polar_positive_theta_fragments(seg):
                 fragmentPointPairs[psegImagMinIndex][ptIndex] += complex(0, Trig.tau)
 
             fragmentSegs = [tuple(pointPair) for pointPair in fragmentPointPairs]
-            testMin = min(min(imags(testSeg)) for testSeg in fragmentSegs)
+            testMin = min(min(imags_of(testSeg)) for testSeg in fragmentSegs)
             if testMin == 0.0:
                 raise UndefinedAtBoundaryError("???2, {}".format(seg))
             assert testMin >= 0.0, "shift process apparently failed." # why?
