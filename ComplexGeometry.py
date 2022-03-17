@@ -1,7 +1,6 @@
 
 
 from enum import Enum
-import operator
 import itertools
 
 import TestingBasics

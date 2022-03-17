@@ -1,5 +1,5 @@
 
-import copy
+
 import math
 import itertools
 import operator
@@ -10,7 +10,7 @@ from enum import Enum
 from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, get_shared_value, assert_isinstance
 from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
-from PureGenTools import peek_first_and_iter
+from PureGenTools import peek_first_and_iter, gen_chunks_as_lists, assert_empty
 
 import ComplexGeometry
 from ComplexGeometry import point_polar_to_rect, point_rect_to_polar, ComplexOnPolarSeam
@@ -132,18 +132,6 @@ def find_min_index_keyed(data, key_fun=None):
 
 
 
-
-def gen_chunks_as_lists(data, length):
-    itemGen = iter(data)
-    while True:
-        chunk = [item for item in itertools.islice(itemGen, 0, length)]
-        yield chunk
-        if len(chunk) < length:
-            assert_empty(itemGen)
-            return
-        else:
-            assert len(chunk) == length
-    assert False
 
 
 def compose_single_arg_function(func, depth=None):
@@ -395,10 +383,10 @@ def seg_multiplied_by_complex(seg, val):
 def complex_swap_complex_components(val):
     return complex(val.imag, val.real)
 
-"""
-def seg_swap_complex_components(seg):
+
+def seg_swapped_complex_components(seg):
     return [complex_swap_complex_components(seg[i]) for i in (0,1)]
-"""
+
 
 def seg_horizontal_line_intersection(seg, imag_pos=None):
     segImags = [seg[0].imag, seg[1].imag]
@@ -422,9 +410,13 @@ def seg_horizontal_line_intersection(seg, imag_pos=None):
     else:
         return None
 
+assert seg_horizontal_line_intersection((1+1j,4+4j), 2) == 2+2j
+
+
 def seg_vertical_line_intersection(seg, real_pos=None):
-    workingSeg = seg_swap_complex_components(seg)
-    result = seg_swap_complex_components(seg_horizontal_line_intersection(workingSeg, real_pos))
+    raise NotImplementedError("tests needed!")
+    workingSeg = seg_swapped_complex_components(seg)
+    result = seg_swapped_complex_components(seg_horizontal_line_intersection(workingSeg, real_pos))
     return result
     
     

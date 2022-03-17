@@ -37,7 +37,7 @@ def summon_cactus(message, _persistent_cacti=dict()):
     else:
         _persistent_cacti[message] = type(message, (), dict())()
         if len(_persistent_cacti) >= 64 and len(_persistent_cacti) in [2**n for n in range(6,24)]:
-            print("summon_cactus: warning: {} unique cacti sure is a lot. Is memory being wasted by their inadvisable mass-production? If not, adjust the warning threshold.".format(len(cacti)))
+            print("summon_cactus: warning: {} unique cacti sure is a lot. Is memory being wasted by their inadvisable mass-production? If not, adjust the warning threshold.".format(len(_persistent_cacti)))
         return _persistent_cacti[message]
 
 
@@ -316,11 +316,4 @@ def assert_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE)
 
 
 
-def assert_empty(input_seq):
-    inputGen = iter(input_seq)
-    try:
-        first = next(inputGen)
-    except StopIteration:
-        return
-    assert False, "input seq was not empty, first item was {}.".format(repr(first))
     

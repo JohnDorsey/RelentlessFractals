@@ -25,7 +25,7 @@ from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed
+from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -44,7 +44,7 @@ def THIS_MODULE_EXEC(string):
 
 CAPTION_RATE_LIMITER = PygameDashboard.SimpleRateLimiter(1.0)
 STATUS_RATE_LIMITER = PygameDashboard.RateLimiter(3.0)
-
+PASSIVE_DISPLAY_FLIP_RATE_LIMITER = PygameDashboard.RateLimiter(30.0)
 
 
 
@@ -295,7 +295,7 @@ def gen_suppress_exceptions(input_seq, exception_types):
     try:
         for item in input_seq:
             yield item
-    except exception_types as e:
+    except exception_types:
         return
 
 
@@ -462,12 +462,12 @@ assert_equal(list(gen_path_pair_mutual_intersections([1+2j, 3+2j, 30+2j, 30+3j, 
 
 # print("tests needed for path pair windowed mutual intersections.")
 def gen_path_pair_windowed_mutual_intersections(point_seq_0, point_seq_1, intersection_fun=None, window_distance=None, skip_count=0):
-    raise NotImplementedError("tests needed!")
+    raise NotImplementedError("tests needed! also, verify usage of izip_shortest is correct.")
     assert window_distance >= 1
     assert 0 <= skip_count < window_distance # this window distance test I'm not so sure about.
     segGenPair = [gen_track_previous_full(pointSeq, allow_waste=True) for pointSeq in (point_seq_0, point_seq_1)]
     segWindowGenPair = [gen_track_recent_trimmed(segGen, count=window_distance+1) for segGen in segGenPair]
-    for leftWindow, rightWindow in izip(*segWindowGenPair):
+    for leftWindow, rightWindow in izip_shortest(*segWindowGenPair):
         leftOnRightGen = (intersection_fun(leftWindow[0], otherSeg) for otherSeg in rightWindow[skip_count:])
         rightOnLeftGen = (intersection_fun(rightWindow[0], otherSeg) for otherSeg in leftWindow[max(skip_count, 1):])
         intersectionGen = (item for item in itertools.chain(leftOnRightGen, rightOnLeftGen) if item is not None)
@@ -716,6 +716,7 @@ assert_equal(farcancel_median([0+1j,0+0j, complex(100,100)]), 0+1j)
         
         
 def gen_linear_downsample(input_seq, count=None, analysis_fun=None):
+    """
     inputGen = iter(input_seq)
     while True:
         currentBucket = [item for item in itertools.islice(inputGen, 0, count)]
@@ -725,6 +726,9 @@ def gen_linear_downsample(input_seq, count=None, analysis_fun=None):
         if len(currentBucket) < count:
             return
     assert False
+    """
+    for chunk in gen_chunks_as_lists(input_seq, count):
+        yield analysis_fun(chunk)
 
 assert_equal(list(gen_linear_downsample([1,3,2,4,3,5,10,20], count=2, analysis_fun=mean)), [2,3,4,15])
 
@@ -863,52 +867,7 @@ def parallel_div_complex_by_complex(val0, val1):
     
     
 def ordify(string):
-    return (ord(char) for char in string)
-
-
-def test_abberation(text, scale, iterLimit):
-    if isinstance(text, str):
-        abberationSeq = [((value-64)/256.0)*scale*(1+1j) for value in ordify(text)]
-    else:
-        abberationSeq = text
-    journeyFun = lambda c: c_to_mandel_journey_abberated_by_addition(c, itertools.cycle(abberationSeq))
-    for x, y, sampleCoords in get_seeds(screen.get_size(), -0.5+0j, 4+4j, centered_sample=False):
-        # screen.set_at((x,y), (x%256, (x*y)%256, (x%(y+1))%256))
-        if x==0 and y%4 == 0:
-            pygame.display.flip()
-        # itercount = c_and_journey_fun_to_itercount(journeyFun, sampleCoords, 256, 4)
-        # color = automatic_color(itercount)
-        journey = journeyFun(sampleCoords)
-        constrainedJourney = [item for item in constrain_journey(journey, iterLimit, 4)]
-        #val0 = get_sum_of_inverse_abs_vals(constrainedJourney)
-        #val1 = get_sum_of_inverse_segment_lengths(constrainedJourney)
-        #valb0 = max(0,val0/(val1+1))*64
-        #valb1 = max(0,val1/(val0+1))*64
-        #selfIntersections = count_intersections(constrainedJourney)
-        #valc0 = len(constrainedJourney)
-        #color = normalize_color(
-        #    (val2*2/4, val2/(1+valc0)*32/4, valc0/(val2+1)*8/4)
-        #)
-        color = squish_color((
-            count_float_local_minima(abs(item) for item in constrainedJourney)*16,
-            count_float_local_minima(item.real for item in constrainedJourney)*16,
-            count_float_local_minima(item.imag for item in constrainedJourney)*16,
-        ))
-        screen.set_at((x, y), color)
-        #color = squish_color((
-        #    0,
-        #    x,
-        #    y,
-        #))
-        
-        #screen.set_at(
-        #    (
-        #        int(squish_unsigned(len(constrainedJourney), screen.get_size()[0])),
-        #        int(squish_unsigned(get_sum_of_inverse_segment_lengths(constrainedJourney), screen.get_size()[1])),
-        #    ),
-        #    color,
-        #)
-    
+    return (ord(char) for char in string)    
 
 
 def scaled_size(input_size, input_scale):
@@ -976,6 +935,7 @@ class GridSettings:
         return (int(complexOfCell.real), int(complexOfCell.imag))
         
     def complex_to_item(self, data, complex_coord, centered=None):
+        assert len(data) == self.grid_size[1] and len(data[0]) == self.grid_size[0]
         try:
             x, y = self.complex_to_whole(complex_coord, centered=centered)
         except OverflowError:
@@ -1107,7 +1067,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
     # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_pathShrinkingSelectionAnalyses_mean_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_pathDownsampCpxDecompMedian_windowWidth{}_polarcross_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, custom_window_size)
     viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1206,17 +1166,18 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             # pointGens = [gen_linear_downsample_using_mean(constrainedJourney, count=windowSize) for windowSize in (17,19,23)]
             # zippedPointGen = izip_longest(*pointGens)
             
-            # downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, fun=complex_decomposed_median)
-            # downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, analysis_fun=complex_decomposed_median)
+            downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
-            modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
+            # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
+            # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
             
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(modifiedPointGen, 0, point_limit), (ProvisionError,))
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(downsampledPathSelfIntersectionGen, 0, point_limit), (ProvisionError,))
             visitPointListEcho.push([item for item in limitedVisitPointGen])
         
         # non-differential mode:
@@ -1261,7 +1222,7 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
 
 def quadrilateral_is_convex(points):
     assert len(points) == 4
-    return segments_intersect((points[0], points[2]), (points[1], points[3]))
+    return SegmentGeometry.segments_intersect((points[0], points[2]), (points[1], points[3]))
 
 
 
@@ -1420,7 +1381,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
     # pow(wf(z,normz),wf(1,normc))_(w={}*{})
     # _post(pow(normz,normc))
     # adjMutuRectcross_windowdistance(R5G10C15)
-    setSummaryStr = "panel{}_{}_splitlessSlice_gradMean_rectcross_ReithrGrowCcol".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type, w_step, w_int)
+    setSummaryStr = "panel{}_{}_splitlessSlice_gradMean_rectcross_ReithrGrowCcol".format("(headst({}))".format(headstart) if headstart is not None else "", buddhabrot_set_type) # , w_step, w_int)
     viewSummaryStr = "{}pos{}fov{}esc{}itrlim{}biSup{}count_{}".format(camera.view.center_pos, camera.view.size, escape_radius, iter_limit, camera.bidirectional_supersampling, count_scale, ("blank" if blank_on_output else "noBlank"))
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     
@@ -1490,7 +1451,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
     else:
         print("giving headstart of {}...".format(headstart))
         _startNotNone = sum(panelCell[i_CURRENT_Z] is not None for panelCell in iterate_to_depth(panel, depth=2))
-        for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+        for (y, x), panelCell in enumerate_to_depth_packed(panel, depth=2):
             if x == 0:
                 if STATUS_RATE_LIMITER.get_judgement():
                     print("giving headstart: ~{}%...".format(int(y*100.0/len(panel))))
@@ -1513,7 +1474,7 @@ def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_
             # assert blank_on_output, "not ready yet?"
     
         # ITERATE
-        for y, x, panelCell in enumerate_to_depth(panel, depth=2):
+        for (y, x), panelCell in enumerate_to_depth_packed(panel, depth=2):
             iteratePanelCell(panelCell)
         """
         for y, x, panelCell in enumerate_to_depth(panel, depth=2):
@@ -1696,15 +1657,17 @@ def SET_LIVE_STATUS(status_text):
         pygame.display.set_caption("z. " + status_text + " " + OUTPUT_FOLDER)
     except Exception as e:
         print("couldn't set caption to: {}. error: {}.".format(repr(status_text), e))
+    if PASSIVE_DISPLAY_FLIP_RATE_LIMITER.get_judgement():
+        pygame.display.flip()
 
 
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((4096, 4096))
+screen = pygame.display.set_mode((128, 128))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oK/2/"
+OUTPUT_FOLDER = "test/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1735,9 +1698,9 @@ def main():
     wStepCount = 128 # 256 is good
     for wInt in range(1*wStepCount+1):
     """
-    # for customWindowSize in range(1,1024,8):
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=15, point_limit=65536, count_scale=1,
-        init_formula="z=c", yield_formula="z", esc_test="abs(z)>256", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) # custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
+    for customWindowSize in range(1,1024,8):
+        do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=4096, point_limit=4096, count_scale=0.25*customWindowSize,
+            init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=False, skip_origin=True, do_top_half_only=False, custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
@@ -1776,6 +1739,9 @@ todo:
   -lap counter. improved lap timer.
   -order intersection points on a segment by time (actually distance from start of seg).
   -fixed-point geometry calculations.
+  -tools:
+    -gradual median.
+    -rolling <median|mean>.
   -path self intersection:
     -batch with bounding rectangles. A line segment intersects a rectangle IFF ((it intersects one of that rectangle's diagonals) or (it has at least one endpoint inside the rectangle)). Also compare batch counding rectangles to each other.
     -store segment presences in quadtree. subdividing the segment is not necessary to do this.
@@ -1797,6 +1763,7 @@ todo:
       -make local density a simulation input. (also do this within journey for nonpanel).
       -modify c, <<warp towards|rot around> average|gravitate> within hotel.
       -draw density local maximum or minimum hotels only.
+      -draw a line between c1 and c2 whenever z1 and z2 are very close together.
   -done:
     -use c and escape point as a new coord space...
     -journey pt -> journey pt <minus|divided by> mean of journey at that time.

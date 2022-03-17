@@ -2,7 +2,6 @@
 
 
 import time
-import sys
 import copy
 
 import Qwerty
@@ -77,7 +76,7 @@ def noneisnew(value, default_type):
     return default_type() if value is None else value
 
 def assure_isinstance(value, required_type):
-    assert isinstance(value, required_type), "could not assure value of type {} is instance of {}.".format(type(input_value), required_type)
+    assert isinstance(value, required_type), "could not assure value of type {} is instance of {}.".format(type(value), required_type)
     return value
 
 def noneisnew_or_assure_isinstance(input_value, required_type):

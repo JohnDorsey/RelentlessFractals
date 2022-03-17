@@ -25,6 +25,17 @@ def peek_first_and_iter(input_seq):
     return (first, inputGen)
 
 
+def assert_empty(input_seq):
+    inputGen = iter(input_seq)
+    try:
+        first = next(inputGen)
+    except StopIteration:
+        return
+    assert False, "input seq was not empty, first item was {}.".format(repr(first))
+
+
+
+
 
 
 testZip = zip("ab","cd")
@@ -200,4 +211,31 @@ def iterate_to_depth(data, depth=None):
             for subItem in iterate_to_depth(item, depth=depth-1):
                 yield subItem
 _assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
+
+
+
+
+
+
+
+
+
+
+def gen_chunks_as_lists(data, length):
+    itemGen = iter(data)
+    while True:
+        chunk = [item for item in itertools.islice(itemGen, 0, length)]
+        if len(chunk) == 0:
+            return
+        yield chunk
+        if len(chunk) < length:
+            assert_empty(itemGen)
+            return
+        else:
+            assert len(chunk) == length
+    assert False
+    
+assert list(gen_chunks_as_lists(range(9), 2)) == [[0,1], [2,3], [4,5], [6,7], [8]]
+assert list(gen_chunks_as_lists(range(8), 2)) == [[0,1], [2,3], [4,5], [6,7]]
+
 
