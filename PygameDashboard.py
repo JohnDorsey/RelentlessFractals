@@ -219,31 +219,48 @@ class SimpleLapTimer:
 
 
 def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
-    if not isinstance(nickname, str):
-        raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
-    
-    if nickname in _persistent_info:
-        if include_lap:
-            print("the nickname {} is already in use! Note that tracking lap times is impossible for new decorators created with an old nickname.".format(repr(nickname)))
-            include_lap = False
-    else:
-        _persistent_info[nickname] = {"lap_end_time": None}
-        
     toMStr = lambda val: "{} m".format(round(val/60.0, ndigits=ndigits))
     toHStr = lambda val: "{} h".format(round(val/60.0/60.0, ndigits=ndigits))
     toSMHStr = lambda val: "{} s ({})({})".format(val, toMStr(val), toHStr(val))
+    toPercentStr = lambda val: "~{}%".format(round(100.0*val, ndigits=3))
+
+    if not isinstance(nickname, str):
+        raise TypeError("this decorator requires a string argument for a nickname to be included in the decorator line using parenthesis.")
+        
     
     def measure_time_nicknamed_inner(input_fun):
+        if not hasattr(input_fun, "__call__"):
+            raise TypeError("this is not callable, and can't be decorated.")
+            
+        uidObj = object()
+        assert uidObj not in _persistent_info
+        localNickname = nickname
+        if localNickname in (valB["nickname"] for valB in _persistent_info.values()):
+            localNickname = localNickname + "({})".format(id(uidObj))
+        _persistent_info[uidObj] = {"nickname":localNickname, "print_lap_info":include_lap, "lap_end_time": None, "lap_count":0, "action_duration_sum":0.0, "lap_duration_sum":0.0}
+        myInfo = _persistent_info[uidObj]
+        del localNickname
         
         def measure_time_nicknamed_inner_inner(*args, **kwargs):
             actionStartTime = time.monotonic()
             result = input_fun(*args, **kwargs)
             actionEndTime = time.monotonic()
-            print("{} took {}.".format(nickname, toSMHStr(actionEndTime-actionStartTime))
-                +((" lap took: " + ("{}.".format(toSMHStr(actionEndTime-_persistent_info[nickname]["lap_end_time"])) if _persistent_info[nickname]["lap_end_time"] is not None else "unknown.") ) if include_lap else ""), end=end
-            )
-            if include_lap:
-                _persistent_info[nickname]["lap_end_time"] = actionEndTime
+            
+            actionDuration = actionEndTime - actionStartTime
+            lapDuration = (actionEndTime - myInfo["lap_end_time"]) if myInfo["lap_end_time"] is not None else None
+            
+            print("{} took: {}.".format(nickname, toSMHStr(actionDuration)), end="")
+            if myInfo["print_lap_info"]:
+                print(" lap {} took: {}.".format(myInfo["lap_count"], toSMHStr(lapDuration) if lapDuration is not None else "unknown.") if myInfo["print_lap_info"] else "", end="")
+                print(" load: {}.".format(toPercentStr(actionDuration/lapDuration) if lapDuration is not None else "unknown"), end="")
+            print("", end=end)
+            
+            myInfo["lap_end_time"] = actionEndTime
+            myInfo["action_duration_sum"] += actionDuration
+            if lapDuration is not None:
+                myInfo["lap_duration_sum"] += lapDuration
+                myInfo["lap_count"] += 1
+            
             return result
         return measure_time_nicknamed_inner_inner
         

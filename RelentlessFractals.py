@@ -911,7 +911,8 @@ class Camera:
         
 class CoordinateError(Exception):
     pass
-    
+
+
 class GridSettings:
     
     def __init__(self, view, grid_size):
@@ -963,6 +964,7 @@ class GridSettings:
             yield (x, y, self.whole_to_complex((x,y), centered=centered))
             
 testGrid = GridSettings(View(0+0j, 4+4j), (2,2))
+assert_equal(list(testGrid.iter_cell_whole_coords()), [(0, 0), (1, 0), (0, 1), (1, 1)])
 SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=False)), [(0, 0, -2-2j), (1, 0, 0-2j), (0, 1, -2+0j), (1, 1, 0+0j)])
 SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=True)), [(0, 0, -1-1j), (1, 0, 1-1j), (0, 1, -1+1j), (1, 1, 1+1j)])
 del testGrid
@@ -994,6 +996,10 @@ class Echo:
         return self.history[-2]
 
 
+def vec_add_vec(vec0, vec1):
+    for i, vec1val in enumerate(vec1):
+        vec0[i] += vec1val
+
     
 def vec_add_vec_masked(vec0, vec1, mask):
     for i in range(len(vec0)):
@@ -1015,6 +1021,13 @@ def gen_drop_first_if_equals(input_seq, value):
     first = next(inputGen)
 """
 
+
+
+
+
+"""
+def do_visual_tests(camera):
+"""
 
 
 
@@ -1045,16 +1058,28 @@ zjfiFoundationSegsToUse = [(seed, max(escape_radius,2.0)*10.0*get_normalized(see
 zippedJourneyFoundationIntersections = gen_path_zipped_multi_seg_intersections(zjfiJourneyToFollow, reference_segs=zjfiFoundationSegsToUse, intersection_fun=SegmentGeometry.segment_intersection); # assert len(zjfiJourneyToAnalyze) < iter_limit, "bad settings! is this a buddhabrot, or is it incorrectly an anti-buddhabrot or a joint-buddhabrot?"; assert zjfiJourneyToAnalyze[0] == complex(0,0), "what? bad code?";
 """
 
+# differential mode:
+"""
+if i == 0:
+    print("in differential mode, the first point's journey is not drawn.")
+else:
+    comparisonMaskedVisitPointPairList = [pointPair for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 1*pixelWidth]
 
+    for ii, (leftPoint, centerPoint) in enumerate(comparisonMaskedVisitPointPairList):
+        assert ii <= point_limit
+        drawingStats["dotCount"] += 1
+        drawPoint(mainPoint=centerPoint, comparisonPoint=leftPoint)
+    # modify_visit_count_matrix(visitCountMatrix, ((curTrackPt, True, (curTrackPt.real>prevTrackPt.real), (curTrackPt.imag>prevTrackPt.imag)...
+"""
 
 
 
 
 @measure_time_nicknamed("do_buddhabrot", end="\n\n")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init_formula=None, yield_formula=None, esc_test=None, iter_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None, custom_window_size=None):
+def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, fractal_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None, custom_window_size=None, do_visual_test=False):
     SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
-    assert None not in {iter_limit, point_limit, init_formula, yield_formula, esc_test, iter_formula, esc_exceptions, buddha_type, banded}
+    assert None not in {iter_limit, point_limit, esc_exceptions, buddha_type, banded}
     assert camera.screen_settings.grid_size == screen.get_size()
     if w_int is not None:
         assert False, "not written right now!"
@@ -1067,12 +1092,13 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
     # greedyShortPathFromSeed_rectcross_RallGincrBinci
     # _sortedBySeedmanhdist
     # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_pathDownsampCpxDecompMedian_windowWidth{}_polarcross_RallGincrBinci".format(buddha_type, init_formula, yield_formula, esc_test, iter_formula, custom_window_size)
+    # pathDownsampCpxDecompMedian_windowWidth{}_polarcross
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_rectcross_(RallGincrBinci_plus_home_as_RallGincrBinci)".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
     
-    escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", init_formula=init_formula, yield_formula=yield_formula, esc_test=esc_test, iter_formula=iter_formula)
+    escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", **fractal_formula)
     
     
     def specializedDraw():
@@ -1084,72 +1110,60 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
         print("Wow, are pixels supposed to be that small?")
     
     visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
+    homeOutputMatrix = visitCountMatrix
     
     
-    def pointToVisitCountMatrixCell(point):
-        return camera.screen_settings.complex_to_item(visitCountMatrix, point, centered=False)
+    def pointToMatrixCell(matrix, point):
+        return camera.screen_settings.complex_to_item(matrix, point, centered=False)
         
-    def drawPointUsingMask(mainPoint=None, mask=None):
+    def drawPointUsingMask(matrix, mainPoint=None, mask=None):
         try:
-            vec_add_scalar_masked(pointToVisitCountMatrixCell(mainPoint), count_scale, mask)
+            vec_add_scalar_masked(pointToMatrixCell(matrix, mainPoint), count_scale, mask)
         except CoordinateError:
             pass
             
-    def drawZippedPointsToChannels(mainPoints=None):
+    def drawZippedPointTupleToChannels(matrix, mainPoints=None):
         assert len(mainPoints) == 3, "what?"
         for i, currentPoint in enumerate(mainPoints):
             if currentPoint is None:
                 continue
             try:
-                currentCell = pointToVisitCountMatrixCell(currentPoint)
+                currentCell = pointToMatrixCell(matrix, currentPoint)
                 currentCell[i] += count_scale
             except CoordinateError:
                 pass
                 
-    def drawPointUsingComparison(mainPoint=None, comparisonPoint=None):
-        drawPointUsingMask(mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
+    def drawPointUsingComparison(matrix, mainPoint=None, comparisonPoint=None):
+        drawPointUsingMask(matrix, mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
     
     
     
     visitPointListEcho = Echo(length=2)
     
-    print("done initializing.")
     
-    for i, (x, y, seed) in enumerate(camera.seed_settings.iter_cell_descriptions(centered=False)):
-        
-        if (x==0):
-            if do_top_half_only and (y >= camera.seed_settings.grid_size[1]//2):
-                break
-            if banded and (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
-                SET_LIVE_STATUS("drawing...")
-                specializedDraw()
-                SET_LIVE_STATUS("saving...")
-                # {}of{}dots , drawingStats["drawnDotCount"], drawingStats["dotCount"]
-                save_screenshot_as(name_prefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
-                SET_LIVE_STATUS("saved...")
-            if CAPTION_RATE_LIMITER.get_judgement():
-                SET_LIVE_STATUS("{}of{}".format(y, camera.seed_settings.grid_size[1]))
-                
-        if skip_origin and (seed == 0j):
-            visitPointListEcho.push([])
-            continue
-        
+    def genCellDescriptions(testMode=False):
+        if testMode:
+            return [(point[0], point[1], camera.seed_settings.whole_to_complex(point, centered=False)) for point in test_seeds]
+        else:
+            return camera.seed_settings.iter_cell_descriptions(centered=False)
+            
+            
+    def seedToPointList(seed):
         constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), 0, iter_limit+1), esc_exceptions))
         
         if buddha_type == "jbb":
             seedIsInSet = True
         else:
-            seedIsInSet = not (len(constrainedJourney) >= iter_limit)
+            seedEscapes = not (len(constrainedJourney) >= iter_limit)
             if buddha_type == "bb":
-                pass
+                seedIsInSet = seedEscapes
             elif buddha_type == "abb":
-                seedIsInSet = not seedIsInSet
+                seedIsInSet = not seedEscapes
             else:
                 assert False, "invalid buddha type {}.".format(buddha_type)
         
         if (not seedIsInSet):
-            visitPointListEcho.push([]) # don't let old visitPointList linger, it is no longer the one from the previous seed.
-            continue
+            return []
         else:
             normedSeed = get_normalized(seed, undefined_result=0j)
             if skip_origin:
@@ -1166,8 +1180,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             # pointGens = [gen_linear_downsample_using_mean(constrainedJourney, count=windowSize) for windowSize in (17,19,23)]
             # zippedPointGen = izip_longest(*pointGens)
             
-            downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, analysis_fun=complex_decomposed_median)
-            downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
+            # downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, analysis_fun=complex_decomposed_median)
+            # downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
+            
+            journeySelfIntersectionGen = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
             
             # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
             # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
@@ -1176,31 +1192,46 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, init
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(journeySelfIntersectionGen, 0, point_limit), (ProvisionError,))
+            return [item for item in limitedVisitPointGen]
+        assert False
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(downsampledPathSelfIntersectionGen, 0, point_limit), (ProvisionError,))
-            visitPointListEcho.push([item for item in limitedVisitPointGen])
+    
+    
+    
+    
+    print("done initializing.")
+    
+    
+    for x, y, seed in genCellDescriptions(testMode=False):
         
-        # non-differential mode:
-        #print(visitPointListEcho.current)
-        for ii, currentItem in enumerate(visitPointListEcho.current):
-            #print(currentItem)
-            # drawZippedPointsToChannels(currentItem)
-            # drawPointUsingMask(mainPoint=currentItem[0], mask=currentItem[1])
-            drawPointUsingComparison(mainPoint=currentItem, comparisonPoint=seed)
-        
-        # differential mode:
-        """
-        if i == 0:
-            print("in differential mode, the first point's journey is not drawn.")
+        if (x==0):
+            if do_top_half_only and (y >= camera.seed_settings.grid_size[1]//2):
+                break
+            if banded and (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
+                SET_LIVE_STATUS("drawing...")
+                specializedDraw()
+                SET_LIVE_STATUS("saving...")
+                save_screenshot_as(name_prefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
+                SET_LIVE_STATUS("saved...")
+            if CAPTION_RATE_LIMITER.get_judgement():
+                SET_LIVE_STATUS("{}of{}".format(y, camera.seed_settings.grid_size[1]))
+                
+        if skip_origin and (seed == 0j):
+            pointListForSeed = []
         else:
-            comparisonMaskedVisitPointPairList = [pointPair for pointPair in zip(visitPointListEcho.previous, visitPointListEcho.current) if abs(pointPair[1]-pointPair[0]) < 1*pixelWidth]
-            
-            for ii, (leftPoint, centerPoint) in enumerate(comparisonMaskedVisitPointPairList):
-                assert ii <= point_limit
-                drawingStats["dotCount"] += 1
-                drawPoint(mainPoint=centerPoint, comparisonPoint=leftPoint)
-            # modify_visit_count_matrix(visitCountMatrix, ((curTrackPt, True, (curTrackPt.real>prevTrackPt.real), (curTrackPt.imag>prevTrackPt.imag)...
-        """
+            pointListForSeed = seedToPointList(seed)
+        
+        visitPointListEcho.push(pointListForSeed)
+        
+        for ii, currentItem in enumerate(visitPointListEcho.current):
+            assert ii <= point_limit, "bad configuration."
+            # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
+            # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
+            drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed)
+            drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem)
+        
+        
     print("doing final draw...")
     specializedDraw()
     print("doing final screenshot...")
@@ -1664,10 +1695,10 @@ def SET_LIVE_STATUS(status_text):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((128, 128))
+screen = pygame.display.set_mode((4096, 4096))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "test/"
+OUTPUT_FOLDER = "oL/3/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1698,9 +1729,9 @@ def main():
     wStepCount = 128 # 256 is good
     for wInt in range(1*wStepCount+1):
     """
-    for customWindowSize in range(1,1024,8):
-        do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=4096, point_limit=4096, count_scale=0.25*customWindowSize,
-            init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c", esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=False, skip_origin=True, do_top_half_only=False, custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
+    #for customWindowSize in range(1,1024,8):
+    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, point_limit=1024, count_scale=1,
+        fractal_formula={"init_formula":"z=c", "yield_formula":"z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
@@ -1775,4 +1806,12 @@ todo:
   
 observations:
   -geometry overhaul (25 Feb 2022) brought polarcross from 14x slower than rectcross to 9.6x, and disabling assertions brings it to 7x.
+
+
+what current features or design goals are kinda painful to keep around?
+  -separate methods do_buddhabrot and do_panel_buddhabrot
+  -trying to reduce calls.
+  -differential draw mode in do_buddhabrot.
+  -count_scale.
+  -floats in the visitCountMatrix. they prevent fast color adjustments using a list as a map.
 """

@@ -55,6 +55,7 @@ except AttributeError:
 
 
 def higher_range_linear(descriptions):
+    # this might be a reinvention of itertools.product.
             
     assert len(descriptions) > 0
     
@@ -75,6 +76,7 @@ def higher_range(descriptions, iteration_order=None):
         reorderedDescriptions = [None for i in range(len(descriptions))]
         for srcIndex, destIndex in enumerate(iteration_order):
             reorderedDescriptions[destIndex] = descriptions[srcIndex]
+            
         for unorderedItem in higher_range_linear(reorderedDescriptions):
             reorderedItem = tuple(unorderedItem[srcIndex] for srcIndex in iteration_order)
             yield reorderedItem
@@ -93,6 +95,7 @@ def gen_track_previous(input_seq):
     for item in input_seq:
         yield (previousItem, item)
         previousItem = item
+        
 assert (list(gen_track_previous(range(5,10))) == [(None,5),(5,6),(6,7),(7,8),(8,9)])
         
         
@@ -107,7 +110,10 @@ def gen_track_previous_full(input_seq, allow_waste=False):
     for currentItem in inputGen:
         yield (previousItem, currentItem)
         previousItem = currentItem
+        
 assert (list(gen_track_previous_full(range(5,10))) == [(5,6), (6,7), (7,8), (8,9)])
+
+
 
 
 def gen_track_recent(input_seq, count=None, default=None):
@@ -116,8 +122,8 @@ def gen_track_recent(input_seq, count=None, default=None):
         history.append(item)
         history.popleft()
         yield tuple(history)
+        
 assert list(gen_track_recent("abcdef", count=3, default=999)) == [(999, 999, "a"), (999, "a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")]
-
 
 
 def gen_track_recent_trimmed(input_seq, count=None):
@@ -127,6 +133,7 @@ def gen_track_recent_trimmed(input_seq, count=None):
         while len(history) > count:
             history.popleft()
         yield tuple(history)
+        
 _assert_equal(list(gen_track_recent_trimmed("abcdef", count=3)), [("a",), ("a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")])
 
 
@@ -155,6 +162,7 @@ def gen_track_recent_full(input_seq, count=None, allow_waste=False):
     assert trash.count(None) == 1
     assert trash[0] is None
     return result
+    
 assert (list(gen_track_recent_full("abcdef", count=3)) == [("a","b","c"),("b","c","d"),("c","d","e"),("d","e","f")])
 assert (list(gen_track_recent_full("abc", count=5, allow_waste=True)) == [])
     
@@ -180,6 +188,7 @@ def enumerate_to_depth_unpacked(data, depth=None):
         for i, item in enumerate(data):
             for longItem in enumerate_to_depth_unpacked(item, depth=depth-1):
                 yield (i,) + longItem
+                
 _assert_equal(list(enumerate_to_depth_unpacked([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
 _assert_equal(list(enumerate_to_depth_unpacked([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
 
@@ -195,6 +204,7 @@ def enumerate_to_depth_packed(data, depth=None):
         for i, item in enumerate(data):
             for subItemAddress, subItem, in enumerate_to_depth_packed(item, depth=depth-1):
                 yield ((i,)+subItemAddress, subItem)
+                
 _assert_equal(list(enumerate_to_depth_packed([5,6,7,8], depth=1)), [((0,),5), ((1,),6), ((2,),7), ((3,),8)])
 _assert_equal(list(enumerate_to_depth_packed([[5,6],[7,8]], depth=2)), [((0,0),5), ((0,1),6), ((1,0),7), ((1,1),8)])
 
@@ -210,6 +220,7 @@ def iterate_to_depth(data, depth=None):
         for item in data:
             for subItem in iterate_to_depth(item, depth=depth-1):
                 yield subItem
+                
 _assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
 
 
