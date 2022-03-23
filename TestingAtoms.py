@@ -25,3 +25,10 @@ def assert_less(thing0, thing1, message=""):
 
 def assert_isinstance(thing0, reference_class, message=""):
     assert isinstance(thing0, reference_class), "{} of type {} is not an instance of {}.".format(repr(thing0), repr(type(thing0)), repr(reference_class))+message
+
+def assure_isinstance(thing0, reference_class, message=""):
+    try:
+        assert_isinstance(thing0, reference_class, message=message)
+    except AssertionError as ae:
+        raise AssuranceError(ae.message)
+    return thing0

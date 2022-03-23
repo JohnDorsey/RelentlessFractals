@@ -13,11 +13,18 @@ import random
 import gc
 
 import pygame
-import numpy
-
-from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
 from TestingBasics import assert_equal, summon_cactus
+
+import numpy
+
+try:
+    import fxpmath
+except ImportError:
+    print("fxpmath is not installed. You might not need it, though.")
+    fxpmath = summon_cactus("fxpmath_was_never_imported_because_it_is_not_installed")
+
+from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
 from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized, float_range
 import SegmentGeometry
@@ -31,6 +38,7 @@ import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
 cpx, norm = (complex, get_normalized)
 
+import CGOL
 
 
 
@@ -926,7 +934,7 @@ def inttup_is_in_bounds(int_tup, size):
 
 
 class View:
-    def __init__(self, center_pos=None, corner_pos=None, sizer=None):
+    def __init__(self, *, center_pos=None, corner_pos=None, sizer=None):
         self.sizer = sizer
         assert self.sizer.real > 0
         assert self.sizer.imag > 0
@@ -1112,9 +1120,14 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 
-def do_cgol_with_fxpmath(input_float_seq):
-    raise NotImplementedError()
-
+def gen_floats_after_fxp_cgol(input_float_seq, steps=1):
+    fxpTemplate = fxpmath.Fxp(0.0, signed=True, n_word=64, n_int=32)
+    bitListSeq = ([int(bitChar) for bitChar in fxpmath.Fxp(currentFloat, like=fxpTemplate).bin()] for currentFloat in input_float_seq)
+    for i in range(steps):
+        bitListSeq = CGOL.cgol_gen_stepped_rows(bitListSeq, x_edge_mode=CGOL.EdgeMode.VOID, y_edge_mode=CGOL.EdgeMode.SHRINK)
+    
+    resultGen = ((fxpmath.Fxp("0b"+"".join(str(bitInt) for bitInt in bitList), like=fxpTemplate)).__float__() for bitList in bitListSeq)
+    return resultGen
 
 
 
@@ -1193,7 +1206,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # pathDownsampCpxDecompMedian_windowWidth{}_polarcross
     # _draw(top(path)bottom(home))
     # (path_ver_plus_home_ver)
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_fxpCGOL_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1309,13 +1322,14 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
             # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
+            modifiedPointGen = (complex(realPart,imagPart) for realPart, imagPart in zip(gen_floats_after_fxp_cgol(reals_of(constrainedJourney)),gen_floats_after_fxp_cgol(imags_of(constrainedJourney))))
             # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
             
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(modifiedPointGen, point_skip, point_limit), (ProvisionError,))
             return [item for item in limitedVisitPointGen]
         assert False
             
@@ -1826,11 +1840,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (256, 256)
+RASTER_SIZE = (1024, 1024)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oN/1/"
+OUTPUT_FOLDER = "oN/2/1024x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1862,7 +1876,7 @@ def main():
     for wInt in range(1*wStepCount+1):
     """
     #for customWindowSize in range(1,1024,8):
-    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=2048, point_skip=0, point_limit=2048, count_scale=4,
+    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=1024, point_skip=0, point_limit=1024, count_scale=8,
         fractal_formula={"init_formula":"z=c", "yield_formula":"z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
