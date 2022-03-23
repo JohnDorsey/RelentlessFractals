@@ -1,5 +1,12 @@
-from PureGenTools import izip_longest, gen_track_recent_full
+import itertools
 from enum import Enum
+
+
+from TestingAtoms import assert_equal
+from PureGenTools import izip_uniform, gen_track_recent_full
+
+
+
 
 
 
@@ -35,32 +42,54 @@ def _gen_extend_list_by_wrapping(input_list, left_length=None, right_length=None
 assert list(_gen_extend_list_by_wrapping([5,6,7,8], left_length=1, right_length=2)) == [8,5,6,7,8,5,6]
 
 
-def with_edge_mode_adjustment(input_data, edge_mode):
+
+
+
+def with_edge_mode_adjustment(input_data, edge_mode, allow_storage=False):
     if edge_mode is EdgeMode.WRAP:
-        if not hasattr(input_data, __getitem__):
-            raise TypeError("input data must have __getitem__ when edge mode is WRAP.")
-        return _gen_extend_list_by_wrapping(input_data, left_length=1, right_length=1)
+        if hasattr(input_data, "__getitem__"):
+            workingInputData = input_data
+        else:
+            if allow_storage:
+                workingInputData = list(input_data)
+            else:
+                raise TypeError("input data must have __getitem__ when edge mode is WRAP and allow_storage is False.")
+        
+        return _gen_extend_list_by_wrapping(workingInputData, left_length=1, right_length=1)
     else:
-        assert edge_mode is EdgeMode.SHRINK, "bad edge mode."
+        assert edge_mode is EdgeMode.SHRINK, "bad edge mode: {}.".format(repr(edge_mode))
         return input_data
 
-
+"""
 def with_edge_mode_adjustments(input_data, x_edge_mode=None, y_edge_mode=None):
     workingData = with_edge_mode_adjustment(input_data, y_edge_mode)
-    result = (with_edge_mode_adjustments(row, x_edge_mode) for row in workingData)
+    result = (with_edge_mode_adjustment(row, x_edge_mode) for row in workingData)
     return result
-
+"""
 
 def cgol_get_stepped_middle_row(input_row_seq, x_edge_mode=None):
+    assert hasattr(input_row_seq, "__getitem__"), "dropped data is possible."
     workingInputRows = [with_edge_mode_adjustment(inputRow, x_edge_mode) for inputRow in input_row_seq]
     assert len(workingInputRows) == 3
     return _cgol_get_stepped_middle_row_shrinkx(workingInputRows)
 
 
 def _cgol_gen_stepped_rows_shrinky(input_row_seq, x_edge_mode=None):
-    return (cgol_get_stepped_middle_row(currentRowTriplet, x_edge_mode=x_edge_mode) for currentRowTriplet in gen_track_recent_full(input_row_seq, count=3))
+    for currentRowTriplet in gen_track_recent_full(input_row_seq, count=3):
+        assert iter(currentRowTriplet[2]) is not iter(currentRowTriplet[2])
+        yield cgol_get_stepped_middle_row(currentRowTriplet, x_edge_mode=x_edge_mode)
         
-def cgol_gen_stepped_rows(input_row_seq,
+
+def cgol_gen_stepped_rows(input_row_seq, x_edge_mode=None, y_edge_mode=None):
+    workingInputRows = with_edge_mode_adjustment(input_row_seq, y_edge_mode)
+    # workingInputRowsB = (with_edge_mode_adjustment(inputRow, x_edge_mode) for inputRow in workingInputRowsA)
+    return _cgol_gen_stepped_rows_shrinky(workingInputRows, x_edge_mode=x_edge_mode)
+    
+test0 = [[0,0,0,0,0,0,0,0,0],[0,1,0,0,0,1,1,0,0],[0,1,0,0,0,1,1,0,0],[0,1,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]]
+test1 = [[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,1,1,0,0],[1,1,1,0,0,1,1,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]]
+assert_equal(list(cgol_gen_stepped_rows(test0, x_edge_mode=EdgeMode.WRAP, y_edge_mode=EdgeMode.WRAP)), test1)
+assert_equal(list(cgol_gen_stepped_rows(test1, x_edge_mode=EdgeMode.WRAP, y_edge_mode=EdgeMode.WRAP)), test0)
+    
 """
 def cgol_gen_stepped_rows_wrapx_shrinky(input_row_seq):
     return (cgol_get_stepped_middle_row_wrapx(currentRowTriplet) for currentRowTriplet in gen_track_recent_full(input_row_seq, count=3))
