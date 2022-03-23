@@ -1,6 +1,8 @@
 
 import operator
 
+
+from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError
 from PureGenTools import peek_first_and_iter, ProvisionError
 
 
@@ -13,21 +15,12 @@ def assert_equal_or_isinstance(thing0, thing1):
 """
 
 
-class AssuranceError(AssertionError):
-    pass
 
 
 
 
-def assert_equal(thing0, thing1, message=""):
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)+message
+
     
-def assert_less(thing0, thing1, message=""):
-    assert thing0 < thing1, "{} is not less than {}.".format(thing0, thing1)+message
-
-def assert_isinstance(thing0, reference_class, message=""):
-    assert isinstance(thing0, reference_class), "{} of type {} is not an instance of {}.".format(repr(thing0), repr(type(thing0)), repr(reference_class))+message
-
 
 
 
@@ -114,12 +107,12 @@ def get_exception_raised_by(fun_to_test):
 # test later.
     
     
-def raises_instanceof(fun_to_test, reference_class, debug=False):
+def raises_instanceof(fun_to_test, exception_types, debug=False):
     def inner(*args, **kwargs):
         exceptionResult = get_exception_raised_by(fun_to_test)(*args, **kwargs)
-        result = isinstance(exceptionResult, reference_class)
+        result = isinstance(exceptionResult, exception_types)
         if debug and not result:
-            print("raises_instanceof: actually got exception {}, not of type {}.".format(repr(exceptionResult), repr(reference_class)))
+            print("raises_instanceof: actually got exception {}, not of type {}.".format(repr(exceptionResult), repr(exception_types)))
         return result
     return inner
     
@@ -132,10 +125,16 @@ assert raises_instanceof(str, IndexError)(1) == False
 del testRaiseIndexError
 
 
-def assert_raises_instanceof(fun_to_test, reference_class, debug=False):
+def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
+    if debug:
+        raise NotImplementedError("can't debug.")
     def inner(*args, **kwargs):
+        """
         result = raises_instanceof(fun_to_test, reference_class, debug=debug)(*args, **kwargs)
         assert result is True, (fun_to_test, reference_class, result)
+        """
+        resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
+        assert isinstance(resultingException, exception_types), "assert_raises_instanceof: expected exception type {}, but got (exception={}, value={}).".format(exception_types, resultingException, resultingValue)
     return inner
 
 """
@@ -237,8 +236,8 @@ assert testValueErrorA(-1) == ValueError
 del testValueErrorA
 
 
-def assert_single_arg_fun_obeys_dict(fun_to_test, qanda_dict):
-    for i, pair in enumerate(qanda_dict.items()):
+def assert_single_arg_fun_obeys_dict(fun_to_test, q_and_a_dict):
+    for i, pair in enumerate(q_and_a_dict.items()):
         testResult = fun_to_test(pair[0])
         assert testResult == pair[1], "failure for test {}, pair={}, testResult={}.".format(i, pair, testResult)
 assert_single_arg_fun_obeys_dict(str, {-1:"-1", 5:"5", complex(1,2):"(1+2j)"})
@@ -278,7 +277,8 @@ def _assert_complex_nearly_equal(val0, val1, error_tolerance=COMPLEX_ERROR_TOLER
             val0, val1, err, errMagnitude, str(errMagnitude/error_tolerance),
         )
     """
-    
+
+
 def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, debug=False):
     head = "test_nearly_equal: debug: "
     if isinstance(thing0, (complex,float,int)) and isinstance(thing1, (complex,float,int)):
@@ -300,6 +300,7 @@ def test_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE, d
         if debug and not result:
             print(head + "failed in br2.")
         return result
+
 
 def assert_nearly_equal(thing0, thing1, error_tolerance=COMPLEX_ERROR_TOLERANCE):
     assert test_nearly_equal(thing0, thing1, error_tolerance=error_tolerance, debug=True), "{} does not nearly equal {} with error tolerance {}.".format(repr(thing0), repr(thing1), repr(error_tolerance))

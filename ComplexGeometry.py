@@ -3,8 +3,9 @@
 from enum import Enum
 import itertools
 
+
 import TestingBasics
-from TestingBasics import assert_equal, get_shared_value, test_nearly_equal, assert_nearly_equal, raises_instanceof, AssuranceError, assert_isinstance
+from TestingBasics import get_shared_value, test_nearly_equal, assert_nearly_equal, raises_instanceof, assert_equal, assert_isinstance, AssuranceError
 from PureGenTools import peek_first_and_iter
 
 import Trig
@@ -25,6 +26,7 @@ class SpecialAnswer(Enum):
     ZERO_MOD_TAU = "zero_mod_tau"
     VERTICAL_SLOPE = "vertical_slope"
     ORIGIN = "origin"
+
     
 class ComplexOnPolarSeam:
     def __init__(self, real, imag):
@@ -286,8 +288,12 @@ assert get_normalized(0+0j) is SpecialAnswer.DNE
 
 
 def multi_traverse(data, count=None):
-    assert iter(data) is not iter(data)
-    assert count > 0
+    # itertools.product could often be used instead.
+    
+    # assert iter(data) is not iter(data)
+    assert count >= 2
+    return itertools.product(*itertools.tee(data, count))
+    """
     if count == 1:
         for item in data:
             yield (item,)
@@ -295,6 +301,7 @@ def multi_traverse(data, count=None):
         for item in data:
             for extension in multi_traverse(data, count=count-1):
                 yield (item,) + extension
+    """
                 
 assert list(multi_traverse([1,2], count=2)) == [(1,1),(1,2),(2,1),(2,2)]
 

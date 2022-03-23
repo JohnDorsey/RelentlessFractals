@@ -1,10 +1,9 @@
 import itertools
 
-
-def _assert_equal(thing0, thing1): # a copy to prevent circular imports.
-    assert thing0 == thing1, "{} does not equal {}.".format(thing0, thing1)
-
 import collections
+
+from TestingAtoms import assert_equal, AssuranceError, AlternativeAssertionError
+
 
 
 
@@ -33,7 +32,12 @@ def assert_empty(input_seq):
         return
     assert False, "input seq was not empty, first item was {}.".format(repr(first))
 
-
+assert_empty((item for item in []))
+try:
+    assert_empty([5])
+    raise AlternativeAssertionError() # just because it is never caught, but this isn't its purpose.
+except AssertionError:
+    pass
 
 
 
@@ -49,7 +53,23 @@ try:
 except AttributeError:
     izip_longest = itertools.zip_longest
 
+
+def izip_uniform(*input_seqs):
+    inputGens = [iter(inputSeq) for inputSeq in input_seqs]
+    outputGen = izip_shortest(*inputGens)
+    for item in outputGen:
+        yield item
     
+    failData = set()
+    for i,inputGen in enumerate(inputGens):
+        try:
+            assert_empty(inputGen)
+        except AssertionError:
+            failData.add(i)
+    if len(failData)> 0:
+        raise AssuranceError("The following seq(s) were not empty: {}.".format(failData))
+    
+
 
 
 
@@ -66,7 +86,7 @@ def higher_range_linear(descriptions):
         for i in range(*descriptions[0]):
             for extension in higher_range_linear(descriptions[1:]):
                 yield (i,) + extension
-assert list(higher_range_linear([(2,5), (3,10,3)])) == [(a,b) for a in range(2,5) for b in range(3,10,3)] == [(2,3), (2,6), (2,9), (3,3), (3,6), (3,9), (4,3), (4,6), (4,9)]
+assert_equal(list(higher_range_linear([(2,5), (3,10,3)])), [(a,b) for a in range(2,5) for b in range(3,10,3)], [(2,3), (2,6), (2,9), (3,3), (3,6), (3,9), (4,3), (4,6), (4,9)])
 
 
 def higher_range(descriptions, iteration_order=None):
@@ -75,18 +95,43 @@ def higher_range(descriptions, iteration_order=None):
         assert sorted(iteration_order) == list(range(len(iteration_order)))
         reorderedDescriptions = [None for i in range(len(descriptions))]
         for srcIndex, destIndex in enumerate(iteration_order):
-            reorderedDescriptions[destIndex] = descriptions[srcIndex]
+            reorderedDescriptions[-1-destIndex] = descriptions[srcIndex]
+        assert len(reorderedDescriptions) == len(iteration_order) == len(descriptions)
             
         for unorderedItem in higher_range_linear(reorderedDescriptions):
-            reorderedItem = tuple(unorderedItem[srcIndex] for srcIndex in iteration_order)
+            reorderedItem = tuple(unorderedItem[-1-srcIndex] for srcIndex in iteration_order)
             yield reorderedItem
     else:
         for item in higher_range_linear(descriptions):
             yield item
-            
-_assert_equal(list(higher_range_linear([(2,5), (3,10,3), (4,)])), [(a,b,c) for a in range(2,5) for b in range(3,10,3) for c in range(4)])
-assert list(higher_range([(2,5), (3,10,3), (4,)], iteration_order=[2,0,1])) == [(a,b,c) for b in range(3,10,3) for c in range(4) for a in range(2,5)]
 
+assert_equal(list(higher_range([(2,5), (3,10,3)])), [(a,b) for a in range(2,5) for b in range(3,10,3)], [(2,3), (2,6), (2,9), (3,3), (3,6), (3,9), (4,3), (4,6), (4,9)])
+assert_equal(list(higher_range([(2,5), (3,10,3)], iteration_order=[1,0])), [(a,b) for a in range(2,5) for b in range(3,10,3)], [(2,3), (2,6), (2,9), (3,3), (3,6), (3,9), (4,3), (4,6), (4,9)])
+assert_equal(list(higher_range([(2,5), (3,10,3)], iteration_order=[0,1])), [(a,b) for b in range(3,10,3) for a in range(2,5)], [(2,3), (3,3), (4,3), (2,6), (3,6), (4,6), (2,9), (3,9), (4,9)])
+
+
+assert_equal(list(higher_range_linear([(0,2), (33,35), (777,779)],                 )), [(0,33,777),(0,33,778),(0,34,777),(0,34,778),(1,33,777),(1,33,778),(1,34,777),(1,34,778)])
+assert_equal(list(higher_range([(0,2), (33,35), (777,779)],                        )), [(0,33,777),(0,33,778),(0,34,777),(0,34,778),(1,33,777),(1,33,778),(1,34,777),(1,34,778)])
+assert_equal(list(higher_range([(0,2), (33,35), (777,779)], iteration_order=[2,1,0])), [(0,33,777),(0,33,778),(0,34,777),(0,34,778),(1,33,777),(1,33,778),(1,34,777),(1,34,778)])
+assert_equal(list(higher_range([(0,2), (33,35), (777,779)], iteration_order=[1,2,0])), [(0,33,777),(0,33,778),(1,33,777),(1,33,778),(0,34,777),(0,34,778),(1,34,777),(1,34,778)])
+            
+assert_equal(list(higher_range([(2,5), (3,10,3), (4,)])), [(a,b,c) for a in range(2,5) for b in range(3,10,3) for c in range(4)])
+assert_equal(list(higher_range([(2,5), (3,10,3), (4,)], iteration_order=[2,0,1])), [(a,b,c) for a in range(2,5) for c in range(4) for b in range(3,10,3)])
+
+
+def higher_range_by_corners(start_corner=None, stop_corner=None, step_corner=None, iteration_order=None):
+    assert stop_corner is not None
+    if start_corner is None:
+        start_corner = tuple(0 for i in range(len(stop_corner)))
+    if step_corner is None:
+        # step_corner = tuple(1 for i in range(len(stop_corner)))
+        srcs = (start_corner, stop_corner)
+    else:
+        srcs = (start_corner, stop_corner, step_corner)
+    descriptions = tuple(izip_uniform(*srcs))
+    return higher_range(descriptions, iteration_order=iteration_order)
+    
+assert_equal(list(higher_range_by_corners(start_corner=(5,50), stop_corner=(7,52))), [(5,50), (5,51), (6,50), (6,51)])
 
             
             
@@ -134,7 +179,7 @@ def gen_track_recent_trimmed(input_seq, count=None):
             history.popleft()
         yield tuple(history)
         
-_assert_equal(list(gen_track_recent_trimmed("abcdef", count=3)), [("a",), ("a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")])
+assert_equal(list(gen_track_recent_trimmed("abcdef", count=3)), [("a",), ("a", "b"), ("a","b","c"), ("b","c","d"),("c","d","e"),("d","e","f")])
 
 
 def gen_track_recent_full(input_seq, count=None, allow_waste=False):
@@ -189,8 +234,8 @@ def enumerate_to_depth_unpacked(data, depth=None):
             for longItem in enumerate_to_depth_unpacked(item, depth=depth-1):
                 yield (i,) + longItem
                 
-_assert_equal(list(enumerate_to_depth_unpacked([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
-_assert_equal(list(enumerate_to_depth_unpacked([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
+assert_equal(list(enumerate_to_depth_unpacked([5,6,7,8], depth=1)), [(0,5), (1,6), (2,7), (3,8)])
+assert_equal(list(enumerate_to_depth_unpacked([[5,6],[7,8]], depth=2)), [(0,0,5), (0,1,6), (1,0,7), (1,1,8)])
 
 
 
@@ -205,8 +250,8 @@ def enumerate_to_depth_packed(data, depth=None):
             for subItemAddress, subItem, in enumerate_to_depth_packed(item, depth=depth-1):
                 yield ((i,)+subItemAddress, subItem)
                 
-_assert_equal(list(enumerate_to_depth_packed([5,6,7,8], depth=1)), [((0,),5), ((1,),6), ((2,),7), ((3,),8)])
-_assert_equal(list(enumerate_to_depth_packed([[5,6],[7,8]], depth=2)), [((0,0),5), ((0,1),6), ((1,0),7), ((1,1),8)])
+assert_equal(list(enumerate_to_depth_packed([5,6,7,8], depth=1)), [((0,),5), ((1,),6), ((2,),7), ((3,),8)])
+assert_equal(list(enumerate_to_depth_packed([[5,6],[7,8]], depth=2)), [((0,0),5), ((0,1),6), ((1,0),7), ((1,1),8)])
 
 
 
@@ -221,7 +266,7 @@ def iterate_to_depth(data, depth=None):
             for subItem in iterate_to_depth(item, depth=depth-1):
                 yield subItem
                 
-_assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
+assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)), [2,3,4,5,[6,7],8,[9,10]])
 
 
 
@@ -235,7 +280,7 @@ _assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2)
 def gen_chunks_as_lists(data, length):
     itemGen = iter(data)
     while True:
-        chunk = [item for item in itertools.islice(itemGen, 0, length)]
+        chunk = list(itertools.islice(itemGen, 0, length))
         if len(chunk) == 0:
             return
         yield chunk
@@ -250,3 +295,26 @@ assert list(gen_chunks_as_lists(range(9), 2)) == [[0,1], [2,3], [4,5], [6,7], [8
 assert list(gen_chunks_as_lists(range(8), 2)) == [[0,1], [2,3], [4,5], [6,7]]
 
 
+
+def get_next_assuredly_last(input_gen):
+    try:
+        result = next(input_gen)
+    except StopIteration:
+        raise AssuranceError("no next item was available!")
+    try:
+        assert_empty(input_gen)
+    except AssertionError:
+        raise AssuranceError("more items remained!")
+    return result
+    
+
+def yield_next_assuredly_last(input_gen):
+    yield get_next_assuredly_last(input_gen)
+
+
+def assure_gen_length_is(input_gen, length):
+    assert iter(input_gen) is iter(input_gen)
+    return itertools.chain(itertools.slice(input_gen, length-1), yield_next_assuredly_last(input_gen))
+    
+    
+    

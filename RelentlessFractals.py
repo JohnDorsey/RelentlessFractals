@@ -25,7 +25,7 @@ from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
+from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists, higher_range_by_corners
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -137,8 +137,18 @@ def to_portable(path_str):
     return path_str
 
 
-@measure_time_nicknamed("save_surface_as", end="\n\n", include_lap=True)
-def save_surface_as(surface, name_prefix="", name=None):
+
+
+
+
+
+
+
+
+@measure_time_nicknamed("save_surface_as", end="\n\n", include_lap=True, include_load=True)
+def save_surface_as(surface, name_prefix="", name=None,
+    _gccollect = measure_time_nicknamed("garbage collection", include_load=True)(gc.collect)
+):
     if name is None:
         size = surface.get_size()
         sizeStr = str(size).replace(", ","x") if (size[0] != size[1]) else "({}x)".format(size[0])
@@ -147,19 +157,16 @@ def save_surface_as(surface, name_prefix="", name=None):
     print("saving file {}.".format(usedName))
     assert usedName.endswith(".png")
     pygame.image.save(surface, usedName)
-    measure_time_nicknamed("garbage collection")(gc.collect)()
+    _gccollect()
     #print("{} unreachable objects.".format())
 
 
 
     
-    
-
-    
 
 
 
-@measure_time_nicknamed("draw_squished_ints_to_surface")
+@measure_time_nicknamed("draw_squished_ints_to_surface", include_load=True)
 def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
     # maybe this method shouldn't exist. Maybe image creation should happen in another process, like photo.py in GeodeFractals.
     assert COLOR_SETTINGS_SUMMARY_STR == "color(atan)"
@@ -189,9 +196,22 @@ def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
             
 
 
+
+
+
+
+
+
+
+
+
             
 def construct_data(size, default_value=None, converter_fun=(lambda x: x)):
     assert len(size) > 0
+    """
+    if STATUS_RATE_LIMITER.get_judgement():
+        print()
+    """
     if len(size) == 1:
         return converter_fun([copy.deepcopy(default_value) for i in range(size[0])])
     else:
@@ -876,27 +896,149 @@ def scaled_size(input_size, input_scale):
     return (input_size[0]*input_scale, input_size[1]*input_scale)
     
     
+"""
+class CoordinateError(Exception):
+    pass
+"""
+    
+"""
+class ExtremeScaleWarning(Exception):
+    pass
+"""
+class ViewBaseCoordinateError(Exception):
+    pass
+
+class ViewOutOfBoundsError(ViewBaseCoordinateError):
+    pass
+    
+class ViewOutOfStrictBoundsError(ViewBaseCoordinateError):
+    pass
+    
+class ViewOutOfMatrixBoundsError(ViewBaseCoordinateError):
+    pass
+
+
+def relativecpx_is_in_bounds(value):
+    return value.real >= 0 and value.real < 1 and value.imag >= 0 and value.imag < 1
+    
+def inttup_is_in_bounds(int_tup, size):
+    return not (int_tup[0] < 0 or int_tup[0] >= size[0] or int_tup[1] < 0 or int_tup[1] >= size[1])
+
+
 class View:
-    def __init__(self, center_pos, size):
-        assert isinstance(center_pos, complex)
-        assert isinstance(size, complex)
-        self.center_pos, self.size = (center_pos, size)
-        self.corner_pos = self.center_pos - (self.size / 2.0)
+    def __init__(self, center_pos=None, corner_pos=None, sizer=None):
+        self.sizer = sizer
+        assert self.sizer.real > 0
+        assert self.sizer.imag > 0
         
-    def get_sub_view_size(self, subdivisions_pair):
-        return parallel_div_complex_by_floats(self.size, subdivisions_pair)
+        if corner_pos is not None:
+            self.corner_pos = corner_pos
+            assert center_pos is None
+        else:
+            assert center_pos is not None
+            self.corner_pos = center_pos - 0.5*self.sizer
+            
+    @property
+    def center_pos(self):
+        return self.corner_pos + 0.5*self.sizer
+        
+    def relativecpx_to_absolutecpx(self, value, bound=True):
+        if bound:
+            if not relativecpx_is_in_bounds(value):
+                raise ViewOutOfStrictBoundsError()
+        return self.corner_pos + complex(self.sizer.real*value.real, self.sizer.imag*value.imag)
+    def absolutecpx_to_relativecpx(self, value, bound=True):
+        positionAdjusted = value - self.corner_pos
+        result = complex(positionAdjusted.real/self.sizer.real, positionAdjusted.imag/self.sizer.imag)
+        if bound:
+            if not relativecpx_is_in_bounds(result):
+                raise ViewOutOfStrictBoundsError()
+        return result
+        
+    def absolutecpx_is_in_bounds(self, value):
+        return self.relativecpx_is_in_bounds(self.absolutecpx_to_relativecpx(value))
     
-    """
-    def get_sub_view_corner(self, subdivisions_pair, sub_view_coord):
-        # assert all(sub_view_coord[i] <= subdivisions_pair[i] for i in (0,1))
-        return self.corner_pos + parallel_mul_complex_by_floats(self.get_sub_view_size(subdivisions_pair), sub_view_coord)
+    def transform_absolutecpx_to(self, value, other_view, bound=True):
+        return other_view.relativecpx_to_absolutecpx(self.absolutecpx_to_relativecpx(value, bound=bound), bound=bound)
+    def transform_absolutecpx_from(self, value, other_view, bound=True):
+        return self.relativecpx_to_absolutecpx(other_view.absolutecpx_to_relativecpx(value, bound=bound), bound=bound)
 
-    def get_sub_view_center(self, subdivisions_pair, sub_view_coord):
-        return self.get_sub_view_corner(subdivisions_pair, (sub_view_coord[0] + 0.5, sub_view_coord[1] + 0.5))
-    """
+    def relativecpx_to_inttup(self, value, size):
+        """
+        if size[0] < 2 or size[1] < 2:
+            raise ExtremeScaleWarning()
+        """
+        result = (math.floor(value.real*size[0]), math.floor(value.imag*size[1]))
+        if not inttup_is_in_bounds(result, size):
+            raise ViewOutOfBoundsError()
+        return result
+    def inttup_to_relativecpx(self, int_tup, size):
+        result = complex(float(int_tup[0])/size[0], float(int_tup[1])/size[1])
+        if not relativecpx_is_in_bounds(result):
+            raise ViewOutOfBoundsError()
+        return result
+
+    def absolutecpx_to_inttup(self, value, size):
+        return self.relativecpx_to_inttup(self.absolutecpx_to_relativecpx(value), size)
+    def inttup_to_absolutecpx(self, int_tup, size):
+        return self.relativecpx_to_absolutecpx(self.inttup_to_relativecpx(int_tup, size))
+        
+    def absolutecpx_to_matrix_cell(self, value, matrix=None, size=None):
+        assert len(matrix) == size[1]
+        assert len(matrix[0]) == size[0]
+        try:
+            x, y = self.absolutecpx_to_inttup(value, size)
+        except OverflowError:
+            raise ViewOutOfMatrixBoundsError("near-infinity can never be a list index!")
+        if x < 0 or y < 0:
+            raise ViewOutOfMatrixBoundsError("negatives not allowed here.")
+        if y >= len(matrix):
+            raise ViewOutOfMatrixBoundsError("y is too high.")
+        row = matrix[y]
+        if x >= len(row):
+            raise ViewOutOfMatrixBoundsError("x is too high.")
+        return row[x]
+
+    def gen_cell_descriptions(self, size):
+        for y, x in higher_range_by_corners(stop_corner=size[::-1]):
+            yield (x, y, self.inttup_to_absolutecpx((x, y), size))
+        
+    def get_sub_view_sizer(self, size):
+        return complex(self.sizer.real/size[0], self.sizer.imag/size[1])
+        
+    def gen_sub_views(self, size):
+        if size[0]*size[1] > 16384:
+            print("View.gen_sub_views: warning: {} ({}x{}) sub views is a lot.".format(size[0]*size[1], size[0], size[1]))
+        subViewSizer = self.get_sub_view_sizer(size)
+        for x, y, subViewCornerAbsolutecpx in self.gen_cell_descriptions(size):
+            yield (x, y, View(corner_pos=subViewCornerAbsolutecpx, sizer=subViewSizer))
+
+
+class GridSettings:
+    def __init__(self, view, grid_size):
+        assert all(is_round_binary(item) for item in grid_size)
+        self.grid_size = tuple(iter(grid_size)) # make it a tuple as a standard for equality tests in other places.
+        self.view = view
+        assert self.view.sizer.real > 0.0
+        assert self.view.sizer.imag > 0.0
     
+    def get_cell_sizer(self):
+        return self.view.get_sub_view_sizer(self.grid_size)
+        
+    def get_cell_width(self):
+        return self.get_cell_sizer().real
+        
+    def gen_cell_descriptions(self):
+        return self.view.gen_cell_descriptions(self.grid_size)
 
-def bump(data, amount):
+    """
+    def absolutecpx_to_matrix_cell(self, value, matrix=None):
+        return self.view.absolutecpx_to_matrix_cell(value, matrix=matrix, size=self.grid_size)
+    """
+
+
+
+def bumped(data, amount):
     return [item+amount for item in data]
     
 
@@ -909,65 +1051,7 @@ class Camera:
         self.screen_settings = GridSettings(self.view, self.screen_size)
         
         
-class CoordinateError(Exception):
-    pass
 
-
-class GridSettings:
-    
-    def __init__(self, view, grid_size):
-        assert all(is_round_binary(item) for item in grid_size)
-        self.grid_size = tuple(iter(grid_size)) # make it a tuple as a standard for equality tests in other places.
-        self.view = view
-        assert self.view.size.real > 0.0
-        assert self.view.size.imag > 0.0
-        
-        self.cell_size = view.get_sub_view_size(self.grid_size)
-        self.graveyard_point = (256.5 + abs(self.view.center_pos) + abs(2.0*self.view.size)) # a complex coordinate that will never appear on camera. Make it so large that there is no doubt.
-        
-    def whole_to_complex(self, whole_coord, centered=None):
-        assert centered is not None
-        return self.view.corner_pos + parallel_mul_complex_by_floats(self.cell_size, (bump(whole_coord, 0.5) if centered else whole_coord))
-        
-    def complex_to_whole(self, complex_coord, centered=None):
-        # centered_sample might not be logically needed for the answer to this question, depending on how the screen is defined in future versions of the program.
-        complexInView = complex_coord - self.view.corner_pos
-        complexOfCell = parallel_div_complex_by_complex(complexInView, self.cell_size)
-        return (int(complexOfCell.real), int(complexOfCell.imag))
-        
-    def complex_to_item(self, data, complex_coord, centered=None):
-        assert len(data) == self.grid_size[1] and len(data[0]) == self.grid_size[0]
-        try:
-            x, y = self.complex_to_whole(complex_coord, centered=centered)
-        except OverflowError:
-            raise CoordinateError("near-infinity can never be a list index!")
-        if x < 0 or y < 0:
-            raise CoordinateError("negatives not allowed here.")
-        if y >= len(data):
-            raise CoordinateError("y is too high.")
-        row = data[y]
-        if x >= len(row):
-            raise CoordinateError("x is too high.")
-        return row[x]
-        
-    def iter_cell_whole_coords(self, range_descriptions=None, swap_iteration_order=False):
-        if range_descriptions is None:
-            range_descriptions = [(0, s, 1) for s in self.grid_size]
-        iterationOrder = [1,0]
-        if swap_iteration_order:
-            iterationOrder = iterationOrder[::-1]
-        return higher_range(range_descriptions, iteration_order=iterationOrder)
-        
-    def iter_cell_descriptions(self, range_descriptions=None, swap_iteration_order=False, centered=None):
-        assert centered is not None
-        for x, y in self.iter_cell_whole_coords(range_descriptions=range_descriptions, swap_iteration_order=swap_iteration_order):
-            yield (x, y, self.whole_to_complex((x,y), centered=centered))
-            
-testGrid = GridSettings(View(0+0j, 4+4j), (2,2))
-assert_equal(list(testGrid.iter_cell_whole_coords()), [(0, 0), (1, 0), (0, 1), (1, 1)])
-SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=False)), [(0, 0, -2-2j), (1, 0, 0-2j), (0, 1, -2+0j), (1, 1, 0+0j)])
-SegmentGeometry.assert_nearly_equal(list(testGrid.iter_cell_descriptions(centered=True)), [(0, 0, -1-1j), (1, 0, 1-1j), (0, 1, -1+1j), (1, 1, 1+1j)])
-del testGrid
         
 
 
@@ -999,6 +1083,11 @@ class Echo:
 def vec_add_vec(vec0, vec1):
     for i, vec1val in enumerate(vec1):
         vec0[i] += vec1val
+        
+        
+def vec_add_scaled_vec(vec0, vec1, scale=None):
+    for i, vec1val in enumerate(vec1):
+        vec0[i] += vec1val * scale
 
     
 def vec_add_vec_masked(vec0, vec1, mask):
@@ -1023,11 +1112,15 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 
+def do_cgol_with_fxpmath(input_float_seq):
+    raise NotImplementedError()
 
 
-"""
-def do_visual_tests(camera):
-"""
+
+
+
+
+
 
 
 
@@ -1072,15 +1165,20 @@ else:
     # modify_visit_count_matrix(visitCountMatrix, ((curTrackPt, True, (curTrackPt.real>prevTrackPt.real), (curTrackPt.imag>prevTrackPt.imag)...
 """
 
+def mark_if_true(thing, name):
+    if thing:
+        return str(thing)+name
+    else:
+        return ""
 
 
-
-@measure_time_nicknamed("do_buddhabrot", end="\n\n")
-def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, fractal_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None, custom_window_size=None, do_visual_test=False):
+@measure_time_nicknamed("do_buddhabrot", end="\n\n", include_lap=True)
+def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_skip=None, point_limit=None, count_scale=1, fractal_formula=None, esc_exceptions=None, buddha_type=None, banded=None, do_top_half_only=False, skip_origin=False, w_int=None, w_step=None, custom_window_size=None, do_visual_test=False):
     SET_LIVE_STATUS("started...")
     print("do_buddhabrot started.")
-    assert None not in {iter_limit, point_limit, esc_exceptions, buddha_type, banded}
-    assert camera.screen_settings.grid_size == screen.get_size()
+    assert None not in (iter_skip, iter_limit, point_skip, point_limit, esc_exceptions, buddha_type, banded)
+    if not camera.screen_settings.grid_size == dest_surface.get_size():
+        print("warning: screen_settings.grid_size and dest surface size are not equal!")
     if w_int is not None:
         assert False, "not written right now!"
         # w = w_step*w_int
@@ -1093,33 +1191,50 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
     # _sortedBySeedmanhdist
     # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross
     # pathDownsampCpxDecompMedian_windowWidth{}_polarcross
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_rectcross_(RallGincrBinci_plus_home_as_RallGincrBinci)".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
-    viewSummaryStr = "{}pos{}fov{}itrlim{}ptlim{}biSup{}count".format(camera.view.center_pos, camera.view.size, iter_limit, point_limit, camera.bidirectional_supersampling, count_scale)
+    # _draw(top(path)bottom(home))
+    # (path_ver_plus_home_ver)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
     
     escstopJourneyFun = compile_mandel_method("c_to_escstop_mandel_journey", **fractal_formula)
     
     
-    def specializedDraw():
-        draw_squished_ints_to_screen(visitCountMatrix, access_order="yxc")
-
-    
-    pixelWidth = camera.screen_settings.cell_size.real
+    pixelWidth = camera.screen_settings.get_cell_width()
     if not pixelWidth < 0.1:
         print("Wow, are pixels supposed to be that small?")
     
     visitCountMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
-    homeOutputMatrix = visitCountMatrix
+    homeOutputMatrix = construct_data(camera.screen_settings.grid_size[::-1], default_value=[0,0,0])
+    
+    
+    def _specializedDraw():
+        draw_squished_ints_to_surface(dest_surface, visitCountMatrix+homeOutputMatrix, access_order="yxc")
+    def specializedDrawAndSave(namePrefix=None):
+        _specializedDraw()
+        save_surface_as(dest_surface, name_prefix=namePrefix)
+        
+
+    
+    
     
     
     def pointToMatrixCell(matrix, point):
-        return camera.screen_settings.complex_to_item(matrix, point, centered=False)
+        return camera.screen_settings.view.absolutecpx_to_matrix_cell(point, matrix=matrix, size=camera.screen_settings.grid_size)
         
+    """
     def drawPointUsingMask(matrix, mainPoint=None, mask=None):
         try:
             vec_add_scalar_masked(pointToMatrixCell(matrix, mainPoint), count_scale, mask)
         except CoordinateError:
+            pass
+    """
+    print("maybe catching ViewBaseCoordinateError is too wide a net.")
+    def drawPointUsingNumMask(matrix, mainPoint=None, mask=None):
+        try:
+            vec_add_scaled_vec(pointToMatrixCell(matrix, mainPoint), mask, scale=count_scale)
+        except ViewBaseCoordinateError:
             pass
             
     def drawZippedPointTupleToChannels(matrix, mainPoints=None):
@@ -1134,27 +1249,32 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
                 pass
                 
     def drawPointUsingComparison(matrix, mainPoint=None, comparisonPoint=None):
-        drawPointUsingMask(matrix, mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
+        drawPointUsingNumMask(matrix, mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
     
-    
+    """
+    def drawPointUsingManyComparisons(matrix, mainPoint=None, comparisonPoints=None):
+        finalNumMask = [sum(currentTuple[i] for currentTuple in ([True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag] for comparisonPoint...
+    """
     
     visitPointListEcho = Echo(length=2)
     
     
     def genCellDescriptions(testMode=False):
         if testMode:
-            return [(point[0], point[1], camera.seed_settings.whole_to_complex(point, centered=False)) for point in test_seeds]
+            # return [(point[0], point[1], camera.seed_settings.whole_to_complex(point, centered=False)) for point in test_seeds]
+            raise NotImplementedError()
         else:
-            return camera.seed_settings.iter_cell_descriptions(centered=False)
+            return camera.seed_settings.gen_cell_descriptions()
             
             
     def seedToPointList(seed):
-        constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), 0, iter_limit+1), esc_exceptions))
+        constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), iter_skip, iter_limit+1), esc_exceptions))
+        journeyUnskippedLen = len(constrainedJourney) + iter_skip
         
         if buddha_type == "jbb":
             seedIsInSet = True
         else:
-            seedEscapes = not (len(constrainedJourney) >= iter_limit)
+            seedEscapes = not (journeyUnskippedLen >= iter_limit)
             if buddha_type == "bb":
                 seedIsInSet = seedEscapes
             elif buddha_type == "abb":
@@ -1183,7 +1303,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
             # downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, analysis_fun=complex_decomposed_median)
             # downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
-            journeySelfIntersectionGen = gen_path_self_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            # journeyStagedSelfIntersectionGen = constrainedJourney
+            # for iii in range(1):
+            # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
             # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
             # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
@@ -1192,11 +1315,10 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(journeySelfIntersectionGen, 0, point_limit), (ProvisionError,))
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
             return [item for item in limitedVisitPointGen]
         assert False
             
-    
     
     
     
@@ -1209,13 +1331,11 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
             if do_top_half_only and (y >= camera.seed_settings.grid_size[1]//2):
                 break
             if banded and (y%(camera.seed_settings.grid_size[1]//IMAGE_BAND_COUNT) == 0):
-                SET_LIVE_STATUS("drawing...")
-                specializedDraw()
-                SET_LIVE_STATUS("saving...")
-                save_screenshot_as(name_prefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
+                SET_LIVE_STATUS("drawing and saving...")
+                specializedDrawAndSave(namePrefix=output_name+"{}of{}rows_".format(y, camera.seed_settings.grid_size[1]))
                 SET_LIVE_STATUS("saved...")
             if CAPTION_RATE_LIMITER.get_judgement():
-                SET_LIVE_STATUS("{}of{}".format(y, camera.seed_settings.grid_size[1]))
+                SET_LIVE_STATUS("{}of{}rows".format(y, camera.seed_settings.grid_size[1]))
                 
         if skip_origin and (seed == 0j):
             pointListForSeed = []
@@ -1228,14 +1348,14 @@ def do_buddhabrot(camera, iter_limit=None, point_limit=None, count_scale=1, frac
             assert ii <= point_limit, "bad configuration."
             # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
             # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
+            #if currentItem.imag < 0:
             drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed)
+            #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem)
         
         
-    print("doing final draw...")
-    specializedDraw()
-    print("doing final screenshot...")
-    save_screenshot_as(name_prefix=output_name)
+    print("doing final draw and save...")
+    specializedDrawAndSave(namePrefix=output_name)
     print("do_buddhabrot done.")
     SET_LIVE_STATUS("done.")
 
@@ -1388,7 +1508,7 @@ def split_to_lists(input_seq, trigger_fun=None, include_empty=True):
     
     
 
-@measure_time_nicknamed("do_panel_buddhabrot", end="\n\n")
+@measure_time_nicknamed("do_panel_buddhabrot", end="\n\n", include_lap=True)
 def do_panel_buddhabrot(camera, iter_limit=None, output_iter_limit=None, output_interval_iters=1, blank_on_output=True, count_scale=1, escape_radius=None, buddhabrot_set_type="bb", headstart=None, skip_zero_iter_image=False, kill_not_in_set=True, w_int=None, w_step=None):
     assert buddhabrot_set_type in {"bb", "jbb", "abb"}
     assert buddhabrot_set_type == "bb", "is it really ready?"
@@ -1670,9 +1790,18 @@ def panel_brot_draw_panel_based_on_neighbors_in_set(seed_settings=None, panel=No
 
 
 
+"""
+class Canvas:
+    def __init__(self, size):
+        self.size = size
+        assert all(item in {4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384} for item in self.size), "are you sure about that?"
+    def draw_squished_ints(self, data):
+        raise NotImplementedError()
+    def save(self):
+        raise NotImplementedError()
+"""
 
-
-
+"""
 def save_screenshot_as(*args, **kwargs):
     pygame.display.flip()
     save_surface_as(screen, *args, **kwargs)
@@ -1682,6 +1811,7 @@ def draw_squished_ints_to_screen(*args, **kwargs):
     pygame.display.flip()
     draw_squished_ints_to_surface(screen, *args, **kwargs)
     pygame.display.flip()
+"""
 
 def SET_LIVE_STATUS(status_text):
     try:
@@ -1695,16 +1825,17 @@ def SET_LIVE_STATUS(status_text):
 
 pygame.init()
 pygame.display.init()
-screen = pygame.display.set_mode((4096, 4096))
+
+RASTER_SIZE = (256, 256)
+_screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oL/3/"
+OUTPUT_FOLDER = "oN/1/"
 
 
 SET_LIVE_STATUS("loading...")
-IMAGE_BAND_COUNT = (4 if screen.get_size()[1] <= 128 else (16 if screen.get_size()[1] <= 512 else 32))
-assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
-assert screen.get_size()[0] in {4,8,16,32,64,128,256,512,1024,2048,4096}, "are you sure about that?"
+IMAGE_BAND_COUNT = (4 if _screen.get_size()[1] <= 128 else (16 if _screen.get_size()[1] <= 512 else 32))
+# assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 
 
 
@@ -1725,12 +1856,13 @@ def main():
     # init_formula="z,nc=c,norm(c)*0.0125*{}".format(v), yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+nc",
     # init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c",
     # for v in range(0, 161):
+    # -1.75+0.0j, 0.5+0.03125j
     """
     wStepCount = 128 # 256 is good
     for wInt in range(1*wStepCount+1):
     """
     #for customWindowSize in range(1,1024,8):
-    do_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, point_limit=1024, count_scale=1,
+    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=2048, point_skip=0, point_limit=2048, count_scale=4,
         fractal_formula={"init_formula":"z=c", "yield_formula":"z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)

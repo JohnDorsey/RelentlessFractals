@@ -218,10 +218,16 @@ class SimpleLapTimer:
 
 
 
-def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
-    toMStr = lambda val: "{} m".format(round(val/60.0, ndigits=ndigits))
-    toHStr = lambda val: "{} h".format(round(val/60.0/60.0, ndigits=ndigits))
-    toSMHStr = lambda val: "{} s ({})({})".format(val, toMStr(val), toHStr(val))
+def measure_time_nicknamed(nickname, end="\n", ndigits=(4,2,2), include_lap=False, include_load=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
+    if isinstance(ndigits, int):
+        ndigitsList = [ndigits] * 3
+    else:
+        assert isinstance(ndigits, (list,tuple))
+        assert len(ndigits) == 3
+        ndigitsList = ndigits
+    toMStr = lambda val: "{} m".format(round(val/60.0, ndigits=ndigitsList[1]))
+    toHStr = lambda val: "{} h".format(round(val/60.0/60.0, ndigits=ndigitsList[2]))
+    toSMHStr = lambda val: "{} s ({})({})".format(round(val, ndigits=ndigitsList[0]), toMStr(val), toHStr(val))
     toPercentStr = lambda val: "~{}%".format(round(100.0*val, ndigits=3))
 
     if not isinstance(nickname, str):
@@ -237,7 +243,7 @@ def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _pe
         localNickname = nickname
         if localNickname in (valB["nickname"] for valB in _persistent_info.values()):
             localNickname = localNickname + "({})".format(id(uidObj))
-        _persistent_info[uidObj] = {"nickname":localNickname, "print_lap_info":include_lap, "lap_end_time": None, "lap_count":0, "action_duration_sum":0.0, "lap_duration_sum":0.0}
+        _persistent_info[uidObj] = {"nickname":localNickname, "print_lap_info":include_lap, "print_load_info":include_load, "lap_end_time": None, "lap_count":0, "action_duration_sum":0.0, "lap_duration_sum":0.0}
         myInfo = _persistent_info[uidObj]
         del localNickname
         
@@ -251,7 +257,8 @@ def measure_time_nicknamed(nickname, end="\n", ndigits=2, include_lap=False, _pe
             
             print("{} took: {}.".format(nickname, toSMHStr(actionDuration)), end="")
             if myInfo["print_lap_info"]:
-                print(" lap {} took: {}.".format(myInfo["lap_count"], toSMHStr(lapDuration) if lapDuration is not None else "unknown.") if myInfo["print_lap_info"] else "", end="")
+                print(" lap {} took: {}.".format(myInfo["lap_count"], toSMHStr(lapDuration) if lapDuration is not None else "unknown") if myInfo["print_lap_info"] else "", end="")
+            if myInfo["print_load_info"]:
                 print(" load: {}.".format(toPercentStr(actionDuration/lapDuration) if lapDuration is not None else "unknown"), end="")
             print("", end=end)
             
