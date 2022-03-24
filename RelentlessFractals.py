@@ -1120,11 +1120,11 @@ def gen_drop_first_if_equals(input_seq, value):
 
 
 
-def gen_floats_after_fxp_cgol(input_float_seq, steps=1):
+def gen_floats_after_fxp_ca(input_float_seq, steps=1, ca_nonabox_stepper=None):
     fxpTemplate = fxpmath.Fxp(0.0, signed=True, n_word=64, n_int=32)
     bitListSeq = ([int(bitChar) for bitChar in fxpmath.Fxp(currentFloat, like=fxpTemplate).bin()] for currentFloat in input_float_seq)
     for i in range(steps):
-        bitListSeq = CGOL.cgol_gen_stepped_rows(bitListSeq, x_edge_mode=CGOL.EdgeMode.VOID, y_edge_mode=CGOL.EdgeMode.SHRINK)
+        bitListSeq = CGOL.ca_gen_stepped_rows(bitListSeq, ca_nonabox_stepper=ca_nonabox_stepper, x_edge_mode=CGOL.EdgeMode.VOID, y_edge_mode=CGOL.EdgeMode.SHRINK)
     
     resultGen = ((fxpmath.Fxp("0b"+"".join(str(bitInt) for bitInt in bitList), like=fxpTemplate)).__float__() for bitList in bitListSeq)
     return resultGen
@@ -1206,7 +1206,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # pathDownsampCpxDecompMedian_windowWidth{}_polarcross
     # _draw(top(path)bottom(home))
     # (path_ver_plus_home_ver)
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_fxpCGOL_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_fxpCA(nonaboxMax)_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1228,8 +1228,6 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
         _specializedDraw()
         save_surface_as(dest_surface, name_prefix=namePrefix)
         
-
-    
     
     
     
@@ -1322,7 +1320,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
             # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
-            modifiedPointGen = (complex(realPart,imagPart) for realPart, imagPart in zip(gen_floats_after_fxp_cgol(reals_of(constrainedJourney)),gen_floats_after_fxp_cgol(imags_of(constrainedJourney))))
+            modifiedPointGen = (complex(realPart,imagPart) for realPart, imagPart in zip(*[gen_floats_after_fxp_ca(curSeq, ca_nonabox_stepper=CGOL.nonabox_max) for curSeq in (reals_of(constrainedJourney), imags_of(constrainedJourney))]))
             # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
             
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
@@ -1840,11 +1838,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (1024, 1024)
+RASTER_SIZE = (256, 256)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oN/2/1024x/"
+OUTPUT_FOLDER = "oN/nonaboxMax/512x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1876,7 +1874,7 @@ def main():
     for wInt in range(1*wStepCount+1):
     """
     #for customWindowSize in range(1,1024,8):
-    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=1024, point_skip=0, point_limit=1024, count_scale=8,
+    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=1024, point_skip=0, point_limit=1024, count_scale=16,
         fractal_formula={"init_formula":"z=c", "yield_formula":"z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
