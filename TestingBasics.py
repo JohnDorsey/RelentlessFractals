@@ -3,7 +3,7 @@ import operator
 
 
 from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError
-from PureGenTools import peek_first_and_iter, ProvisionError
+from PureGenTools import peek_first_and_iter, ProvisionError, gen_track_previous
 
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
@@ -50,6 +50,11 @@ def dict_swiss_cheese_access(dict_list, key):
             return currentDict[key]
     raise KeyError("could not find key {} in any of {} dicts.".format(repr(key), i + 1))
     
+assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 5) == 6
+assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 7) == 80
+assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 9) == 10
+
+    
 def dict_swiss_cheese_union(dict_list):
     assert not iter(dict_list) is iter(dict_list)
     keySet = set()
@@ -59,13 +64,18 @@ def dict_swiss_cheese_union(dict_list):
     for key in keySet:
         result[key] = dict_swiss_cheese_access(dict_list, key)
     return result
+    
 assert_equal(dict_swiss_cheese_union([{1:2, 2:4, 3:6}, {3:300, 4:400}]), {1:2, 2:4, 3:6, 4:400})
 
 
 def non_overridably_curry_kwarg_dict(input_fun, kwarg_dict):
+    # raise NotImplementedError("not tested! also, this is a wheel reinvention of builtin partials!")
     def inner(*args, **kwargs):
         return input_fun(*args, **kwarg_dict, **kwargs)
     return inner
+print("tests needed for non_overridably_curry_kwarg_dict")
+
+
 
 """
 def overridably_curry_kwarg_dict(input_fun, kwarg_dict):
@@ -156,7 +166,7 @@ def get_only_non_none_value(input_seq):
 
 
 
-def all_are_equal_to(input_seq, example=None, equality_test_fun=operator.eq):
+def all_are_equal_to(input_seq, *, example=None, equality_test_fun=operator.eq):
     for item in input_seq:
         if not equality_test_fun(example, item):
             return False
@@ -191,6 +201,36 @@ assert_raises_instanceof(get_shared_value, AssuranceError)("aaaba")
 
 
 
+def ints_are_consecutive_increasing(input_seq):
+    """
+    first, inputGen = peek_first_and_iter(input_seq)
+    if first
+    for compNum, newNum in enumerate(inputGen, start=first+1):
+        if new
+        if not compNum == newNum:
+    """
+    for i, (previous, current) in enumerate(gen_track_previous(input_seq)):
+        assert isinstance(current, int)
+        if i == 0:
+            continue
+        else:
+            if current != previous + 1:
+                return False
+    return True
+
+assert ints_are_consecutive_increasing([5,6,7,8,9])
+assert not ints_are_consecutive_increasing([5,6,7,8,10])
+assert not ints_are_consecutive_increasing([9,8,7,6,5])
+
+    
+def ints_are_contiguous(input_seq):
+    return ints_are_consecutive_increasing(sorted(input_seq))
+            
+assert ints_are_contiguous([5,8,6,7])
+assert ints_are_contiguous([-2,1,-1,0,-3])
+assert not ints_are_contiguous([3,4,2,0,-1])
+
+
 
 
 
@@ -216,6 +256,7 @@ def _base_default_to_exception_raised_by(fun_to_test, classify_exception=False):
     return inner
 default_to_exception_raised_by = non_overridably_curry_kwarg_dict(_base_default_to_exception_raised_by, {"classify_exception":False})
 default_to_exception_type_raised_by = non_overridably_curry_kwarg_dict(_base_default_to_exception_raised_by, {"classify_exception":True})
+
 assert_equal(default_to_exception_raised_by(int)("5"), 5)
 assert isinstance(default_to_exception_raised_by(int)("a"), ValueError)
     

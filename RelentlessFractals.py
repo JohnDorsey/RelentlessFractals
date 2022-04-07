@@ -39,6 +39,7 @@ sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in com
 cpx, norm = (complex, get_normalized)
 
 import CGOL
+import MatrixMath
 
 
 
@@ -210,7 +211,13 @@ def draw_squished_ints_to_surface(dest_surface, channels, access_order=None):
 
 
 
+def dv1range(subdivisions):
+    denom = float(subdivisions)
+    for x in range(subdivisions):
+        yield x/denom
 
+assert_equal(list(dv1range(2)), [0.0, 0.5])
+assert_equal(list(dv1range(4)), [0.0, 0.25, 0.5, 0.75])
 
 
             
@@ -291,7 +298,7 @@ def c_to_mandel_itercount_fast(c, iter_limit):
 def c_to_escstop_mandel_journey(c):
     ${init_formula}
     for n in itertools.count():
-        yield ${yield_formula}
+        ${yield_formula}
         if ${esc_test}:
             return
         ${iter_formula}""",
@@ -370,6 +377,7 @@ def gen_constrain_journey(journey, iter_limit, escape_radius):
             return
     assert False, "incomplete journey."
 """
+
 
 
 
@@ -1206,7 +1214,8 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # pathDownsampCpxDecompMedian_windowWidth{}_polarcross
     # _draw(top(path)bottom(home))
     # (path_ver_plus_home_ver)
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_fxpCA(nonaboxMax)_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    # fxpCA(nonaboxMax)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_expJourneySqrMat_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1279,7 +1288,8 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             
             
     def seedToPointList(seed):
-        constrainedJourney = list(gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), iter_skip, iter_limit+1), esc_exceptions))
+        _constrainedJourneyGen = gen_suppress_exceptions(itertools.islice(escstopJourneyFun(seed), iter_skip, iter_limit+1), esc_exceptions)
+        constrainedJourney = list(_constrainedJourneyGen)
         journeyUnskippedLen = len(constrainedJourney) + iter_skip
         
         if buddha_type == "jbb":
@@ -1314,20 +1324,22 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # downsampledPathPointGen = gen_linear_downsample(constrainedJourney, count=custom_window_size, analysis_fun=complex_decomposed_median)
             # downsampledPathSelfIntersectionGen = gen_path_self_intersections(downsampledPathPointGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
-            # journeyStagedSelfIntersectionGen = constrainedJourney
+            #journeyStagedSelfIntersectionGen = constrainedJourney
             # for iii in range(1):
-            # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
+            #journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=False)
             # journeyStagedSelfIntersectionGen = gen_path_self_intersections(journeyStagedSelfIntersectionGen, intersection_fun=SegmentGeometry.rect_seg_polar_space_intersection, sort_by_time=False)
             
             # modifiedPointGen = gen_shrinking_selection_analyses(constrainedJourney, analysis_fun=mean)
-            modifiedPointGen = (complex(realPart,imagPart) for realPart, imagPart in zip(*[gen_floats_after_fxp_ca(curSeq, ca_nonabox_stepper=CGOL.nonabox_max) for curSeq in (reals_of(constrainedJourney), imags_of(constrainedJourney))]))
+            # modifiedPointGen = (complex(realPart,imagPart) for realPart, imagPart in zip(*[gen_floats_after_fxp_ca(curSeq, ca_nonabox_stepper=CGOL.nonabox_max) for curSeq in (reals_of(constrainedJourney), imags_of(constrainedJourney))]))
             # modifiedPathSelfIntersectionGen = gen_path_self_intersections(modifiedPointGen, intersection_fun=SegmentGeometry.segment_intersection, sort_by_time=True)
             
             # journeyWithTrackedDecayingMean = gen_track_decaying_mean(constrainedJourney, feedback=0.5)
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(modifiedPointGen, point_skip, point_limit), (ProvisionError,))
+            exponentiatedJourney = MatrixMath.matrix_exp(MatrixMath.make_square_matrix_from_column(constrainedJourney)).T[0].flatten().tolist()[0]
+            
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(exponentiatedJourney, point_skip, point_limit), (ProvisionError,))
             return [item for item in limitedVisitPointGen]
         assert False
             
@@ -1361,6 +1373,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
             # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
             #if currentItem.imag < 0:
+            assert type(currentItem) == complex, type(currentItem)
             drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed)
             #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem)
@@ -1838,11 +1851,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (256, 256)
+RASTER_SIZE = (4096, 4096)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oN/nonaboxMax/512x/"
+OUTPUT_FOLDER = "oP/1/c/4096x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1869,13 +1882,16 @@ def main():
     # init_formula="z=c", yield_formula="z", esc_test="abs(z)>16", iter_formula="z=z*z+c",
     # for v in range(0, 161):
     # -1.75+0.0j, 0.5+0.03125j
+    #iter_skip=0, iter_limit=24*subs, point_skip=0, point_limit=192, count_scale=8, fractal_formula={"init_formula":"z=c", "yield_formula":"for tf in dv1range({}): yield z**(2**tf)+tf*c".format(subs), "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}
     """
     wStepCount = 128 # 256 is good
     for wInt in range(1*wStepCount+1):
     """
     #for customWindowSize in range(1,1024,8):
-    do_buddhabrot(_screen, Camera(View(center_pos=0+0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=1024, point_skip=0, point_limit=1024, count_scale=16,
-        fractal_formula={"init_formula":"z=c", "yield_formula":"z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError,ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
+    # for subs in [64]: #, 1,32]:
+    # center_pos=-0.14-0.86j, sizer=0.75+0.75j
+    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=2), iter_skip=0, iter_limit=256, point_skip=0, point_limit=256, count_scale=2,
+        fractal_formula={"init_formula":"z=c", "yield_formula":"yield z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError, ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)
 
@@ -1905,26 +1921,37 @@ if __name__ == "__main__":
 
 
 """
+
 todo:
+  -small display surface, large save surface.
+  -logging in-window.
+  -draw to multiple images at different steps in simulation.
+  -desired sequences:
+    -lerping from rectcross to polarcross mode.
   -testing:
     -improve extra assertions for segment_intersection with point-on-line testing.
     -visual debugger for geometry.
     -replace special answer enum.Enums with something that's easier to debug.
     -replace fuzz/defuzz testing with testing that uses only fuzzing (that is, check if fun(fuzz(inputs))==fuzz(fun(inputs))).
-  -lap counter. improved lap timer.
-  -order intersection points on a segment by time (actually distance from start of seg).
   -fixed-point geometry calculations.
+  -color cross buddhabrot based on intersection <angle|segment convergence and/or divergence>.
+  
   -tools:
     -gradual median.
     -rolling <median|mean>.
+    
   -path self intersection:
     -batch with bounding rectangles. A line segment intersects a rectangle IFF ((it intersects one of that rectangle's diagonals) or (it has at least one endpoint inside the rectangle)). Also compare batch counding rectangles to each other.
     -store segment presences in quadtree. subdividing the segment is not necessary to do this.
     -refraction or reflection with previous segments.
     -combine all _intersections with a new segment_ using mean.
+    -find intersections but instead yield <points opposite them on loop shapes|bounded region <center of mass|inscribed circle center>>.
+    -gen intersections between a path in polar space and the same path in rect space, but only intersections not analogous to a specific self-intersection of the path in either space.
+    
   -nonpanel:
-    -time-smooth journies and their intersections ((z^(2^s)+s*c) or recursively smoothed).
+    -time-smooth journies and their intersections ((z^(2^tf)+tf*c) or recursively smoothed).
     -journey smoothing by <simple splines|follower with intertia|follower with smoothly changing direction>.
+    
   -panel:
     -drawing:
       -.
@@ -1939,7 +1966,11 @@ todo:
       -modify c, <<warp towards|rot around> average|gravitate> within hotel.
       -draw density local maximum or minimum hotels only.
       -draw a line between c1 and c2 whenever z1 and z2 are very close together.
+      
+      
   -done:
+    -lap counter. improved lap timer.
+    -order intersection points on a segment by time (actually distance from start of seg).
     -use c and escape point as a new coord space...
     -journey pt -> journey pt <minus|divided by> mean of journey at that time.
     -panel:

@@ -218,7 +218,7 @@ class SimpleLapTimer:
 
 
 
-def measure_time_nicknamed(nickname, end="\n", ndigits=(4,2,2), include_lap=False, include_load=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. slightly modified.
+def measure_time_nicknamed(nickname, end="\n", ndigits=(4,2,2), include_lap=False, include_load=False, _persistent_info=dict()): # copied from GeodeFractals/photo.py. heavily modified.
     if isinstance(ndigits, int):
         ndigitsList = [ndigits] * 3
     else:
@@ -243,7 +243,7 @@ def measure_time_nicknamed(nickname, end="\n", ndigits=(4,2,2), include_lap=Fals
         localNickname = nickname
         if localNickname in (valB["nickname"] for valB in _persistent_info.values()):
             localNickname = localNickname + "({})".format(id(uidObj))
-        _persistent_info[uidObj] = {"nickname":localNickname, "print_lap_info":include_lap, "print_load_info":include_load, "lap_end_time": None, "lap_count":0, "action_duration_sum":0.0, "lap_duration_sum":0.0}
+        _persistent_info[uidObj] = {"nickname":localNickname, "print_lap_info":include_lap, "print_load_info":include_load, "lap_end_time": None, "lap_count":0, "action_duration_sum":0.0, "lap_action_duration_sum":0.0, "lap_duration_sum":0.0}
         myInfo = _persistent_info[uidObj]
         del localNickname
         
@@ -266,6 +266,7 @@ def measure_time_nicknamed(nickname, end="\n", ndigits=(4,2,2), include_lap=Fals
             myInfo["action_duration_sum"] += actionDuration
             if lapDuration is not None:
                 myInfo["lap_duration_sum"] += lapDuration
+                myInfo["lap_action_duration_sum"] += actionDuration
                 myInfo["lap_count"] += 1
             
             return result
