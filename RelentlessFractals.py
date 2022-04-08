@@ -3,6 +3,9 @@
 
 
 
+import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS'] = '1'; # https://stackoverflow.com/questions/17053671/how-do-you-stop-numpy-from-multithreading
+import numpy
+
 
 import time
 import math
@@ -15,8 +18,6 @@ import gc
 import pygame
 
 from TestingBasics import assert_equal, summon_cactus
-
-import numpy
 
 try:
     import fxpmath
@@ -221,16 +222,24 @@ assert_equal(list(dv1range(4)), [0.0, 0.25, 0.5, 0.75])
 
 
             
-def construct_data(size, default_value=None, converter_fun=(lambda x: x)):
+def construct_data(size, default_value=None, converter_fun=None, print_status=False):
     assert len(size) > 0
+    if converter_fun is not None:
+        raise NotImplementedError("converter_fun")
     """
     if STATUS_RATE_LIMITER.get_judgement():
         print()
     """
     if len(size) == 1:
-        return converter_fun([copy.deepcopy(default_value) for i in range(size[0])])
+        result = [copy.deepcopy(default_value) for i in range(size[0])]
+        return result
     else:
-        return converter_fun([construct_data(size[1:], default_value=default_value) for i in range(size[0])])
+        result = []
+        for i in range(size[0]):
+            if STATUS_RATE_LIMITER.get_judgement():
+                print("construct_data: {}%...".format(round(i*100.0/size[0], ndigits=3)))
+            result.append(construct_data(size[1:], default_value=default_value, print_status=False))
+        return result
 
 assert_equal(shape_of(construct_data([5,6,7])), [5,6,7])
 
@@ -930,6 +939,9 @@ class ViewOutOfBoundsError(ViewBaseCoordinateError):
 class ViewOutOfStrictBoundsError(ViewBaseCoordinateError):
     pass
     
+class ViewOutOfInttupBoundsError(ViewBaseCoordinateError):
+    pass
+    
 class ViewOutOfMatrixBoundsError(ViewBaseCoordinateError):
     pass
 
@@ -939,6 +951,9 @@ def relativecpx_is_in_bounds(value):
     
 def inttup_is_in_bounds(int_tup, size):
     return not (int_tup[0] < 0 or int_tup[0] >= size[0] or int_tup[1] < 0 or int_tup[1] >= size[1])
+
+def tunnel_absolutecpx(value, view0, view1, bound=True, default=ViewOutOfStrictBoundsError):
+    return view1.relativecpx_to_absolutecpx(view0.absolutecpx_to_relativecpx(value, bound=bound), bound=bound, default=default)
 
 
 class View:
@@ -954,30 +969,43 @@ class View:
             assert center_pos is not None
             self.corner_pos = center_pos - 0.5*self.sizer
             
+            
     @property
     def center_pos(self):
         return self.corner_pos + 0.5*self.sizer
         
-    def relativecpx_to_absolutecpx(self, value, bound=True):
+        
+    def relativecpx_to_absolutecpx(self, value, *, bound=True, default=ViewOutOfStrictBoundsError):
         if bound:
             if not relativecpx_is_in_bounds(value):
-                raise ViewOutOfStrictBoundsError()
+                if isinstance(default, Exception):
+                    raise default
+                else:
+                    return default
         return self.corner_pos + complex(self.sizer.real*value.real, self.sizer.imag*value.imag)
-    def absolutecpx_to_relativecpx(self, value, bound=True):
+        
+    def absolutecpx_to_relativecpx(self, value, bound=True, default=ViewOutOfStrictBoundsError):
         positionAdjusted = value - self.corner_pos
         result = complex(positionAdjusted.real/self.sizer.real, positionAdjusted.imag/self.sizer.imag)
         if bound:
             if not relativecpx_is_in_bounds(result):
-                raise ViewOutOfStrictBoundsError()
+                if isinstance(default, Exception):
+                    raise default
+                else:
+                    return default
         return result
+        
         
     def absolutecpx_is_in_bounds(self, value):
         return self.relativecpx_is_in_bounds(self.absolutecpx_to_relativecpx(value))
     
-    def transform_absolutecpx_to(self, value, other_view, bound=True):
-        return other_view.relativecpx_to_absolutecpx(self.absolutecpx_to_relativecpx(value, bound=bound), bound=bound)
-    def transform_absolutecpx_from(self, value, other_view, bound=True):
-        return self.relativecpx_to_absolutecpx(other_view.absolutecpx_to_relativecpx(value, bound=bound), bound=bound)
+    
+    def tunnel_absolutecpx_to(self, value, other_view, *, bound=True, default=ViewOutOfStrictBoundsError):
+        return other_view.relativecpx_to_absolutecpx(self.absolutecpx_to_relativecpx(value, bound=bound, default=default), bound=bound, default=default)
+        
+    def tunnel_absolutecpx_from(self, value, other_view, *, bound=True, default=ViewOutOfStrictBoundsError):
+        return self.relativecpx_to_absolutecpx(other_view.absolutecpx_to_relativecpx(value, bound=bound, default=default), bound=bound, default=default)
+
 
     def relativecpx_to_inttup(self, value, size):
         """
@@ -986,20 +1014,24 @@ class View:
         """
         result = (math.floor(value.real*size[0]), math.floor(value.imag*size[1]))
         if not inttup_is_in_bounds(result, size):
-            raise ViewOutOfBoundsError()
+            raise ViewOutOfInttupBoundsError()
         return result
+        
     def inttup_to_relativecpx(self, int_tup, size):
         result = complex(float(int_tup[0])/size[0], float(int_tup[1])/size[1])
         if not relativecpx_is_in_bounds(result):
-            raise ViewOutOfBoundsError()
+            raise ViewOutOfInttupBoundsError()
         return result
+
 
     def absolutecpx_to_inttup(self, value, size):
         return self.relativecpx_to_inttup(self.absolutecpx_to_relativecpx(value), size)
+        
     def inttup_to_absolutecpx(self, int_tup, size):
         return self.relativecpx_to_absolutecpx(self.inttup_to_relativecpx(int_tup, size))
         
-    def absolutecpx_to_matrix_cell(self, value, matrix=None, size=None):
+        
+    def absolutecpx_to_matrix_cell(self, value, *, matrix=None, size=None):
         assert len(matrix) == size[1]
         assert len(matrix[0]) == size[0]
         try:
@@ -1015,19 +1047,25 @@ class View:
             raise ViewOutOfMatrixBoundsError("x is too high.")
         return row[x]
 
+
     def gen_cell_descriptions(self, size):
         for y, x in higher_range_by_corners(stop_corner=size[::-1]):
             yield (x, y, self.inttup_to_absolutecpx((x, y), size))
         
+        
     def get_sub_view_sizer(self, size):
         return complex(self.sizer.real/size[0], self.sizer.imag/size[1])
         
-    def gen_sub_views(self, size):
+        
+    def gen_sub_view_descriptions(self, size):
         if size[0]*size[1] > 16384:
             print("View.gen_sub_views: warning: {} ({}x{}) sub views is a lot.".format(size[0]*size[1], size[0], size[1]))
         subViewSizer = self.get_sub_view_sizer(size)
         for x, y, subViewCornerAbsolutecpx in self.gen_cell_descriptions(size):
             yield (x, y, View(corner_pos=subViewCornerAbsolutecpx, sizer=subViewSizer))
+
+
+
 
 
 class GridSettings:
@@ -1164,6 +1202,8 @@ def gen_floats_after_fxp_ca(input_float_seq, steps=1, ca_nonabox_stepper=None):
 # sortedBySeedmanhdistJourneySelfIntersections = gen_path_self_intersections(sortedBySeedmanhdistJourney, intersection_fun=SegmentGeometry.segment_intersection)
 
 # shuffledJourney, constrainedJourney = (constrainedJourney, None); random.shuffle(shuffledJourney)
+
+# exponentiatedJourney = MatrixMath.matrix_exp(MatrixMath.make_square_matrix_from_column(constrainedJourney)).T[0].flatten().tolist()[0]
 """
 zjfiJourneyToFollow = sortedByAbsJourneySelfIntersections # skip first item here if necessary.
 zjfiJourneyToAnalyze = sortedByAbsJourneySelfIntersections
@@ -1191,6 +1231,11 @@ def mark_if_true(thing, name):
         return str(thing)+name
     else:
         return ""
+        
+def get_virtual_2d_index(index=None, *, size=None):
+    assert 0 <= index[1] < size[1]
+    assert 0 <= index[0] < size[0]
+    return index[1]*size[0] + index[0]
 
 
 @measure_time_nicknamed("do_buddhabrot", end="\n\n", include_lap=True)
@@ -1215,7 +1260,8 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # _draw(top(path)bottom(home))
     # (path_ver_plus_home_ver)
     # fxpCA(nonaboxMax)
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_expJourneySqrMat_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    # journeyWrapToMatRows_exp_unwrapRows
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_subViewsForStepSizes_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1251,25 +1297,25 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             pass
     """
     print("maybe catching ViewBaseCoordinateError is too wide a net.")
-    def drawPointUsingNumMask(matrix, mainPoint=None, mask=None):
+    def drawPointUsingNumMask(matrix, *, mainPoint=None, mask=None, draw_scale=1):
         try:
-            vec_add_scaled_vec(pointToMatrixCell(matrix, mainPoint), mask, scale=count_scale)
+            vec_add_scaled_vec(pointToMatrixCell(matrix, mainPoint), mask, scale=count_scale*draw_scale)
         except ViewBaseCoordinateError:
             pass
             
-    def drawZippedPointTupleToChannels(matrix, mainPoints=None):
+    def drawZippedPointTupleToChannels(matrix, *, mainPoints=None, draw_scale=1):
         assert len(mainPoints) == 3, "what?"
         for i, currentPoint in enumerate(mainPoints):
             if currentPoint is None:
                 continue
             try:
                 currentCell = pointToMatrixCell(matrix, currentPoint)
-                currentCell[i] += count_scale
+                currentCell[i] += count_scale*draw_scale
             except CoordinateError:
                 pass
                 
-    def drawPointUsingComparison(matrix, mainPoint=None, comparisonPoint=None):
-        drawPointUsingNumMask(matrix, mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag])
+    def drawPointUsingComparison(matrix, *, mainPoint=None, comparisonPoint=None, draw_scale=1):
+        drawPointUsingNumMask(matrix, mainPoint=mainPoint, mask=[True, mainPoint.real>comparisonPoint.real, mainPoint.imag>comparisonPoint.imag], draw_scale=draw_scale)
     
     """
     def drawPointUsingManyComparisons(matrix, mainPoint=None, comparisonPoints=None):
@@ -1337,13 +1383,29 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            exponentiatedJourney = MatrixMath.matrix_exp(MatrixMath.make_square_matrix_from_column(constrainedJourney)).T[0].flatten().tolist()[0]
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(exponentiatedJourney, point_skip, point_limit), (ProvisionError,))
+            #journeyMat = MatrixMath.wrap_to_square_matrix_rows(constrainedJourney)
+            #exponentiatedJourneyMat = MatrixMath.matrix_exp(journeyMat)
+            #flatMat = MatrixMath.matrix_rows_flattened_to_list(exponentiatedJourneyMat)
+            
+            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
             return [item for item in limitedVisitPointGen]
         assert False
             
     
+    def drawPointList(seed, pointList, *, draw_scale=1):
+        for ii, currentItem in enumerate(pointList):
+            assert ii <= point_limit, "bad configuration."
+            # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
+            # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
+            #if currentItem.imag < 0:
+            assert type(currentItem) == complex, type(currentItem)
+            drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed, draw_scale=draw_scale)
+            #if seed.imag > 0:
+            drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem, draw_scale=draw_scale)
+    
+    
+    screenSubViews = list(subView for _, _, subView in camera.screen_settings.view.gen_sub_view_descriptions((8,8)))
     
     
     print("done initializing.")
@@ -1368,15 +1430,12 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
         
         visitPointListEcho.push(pointListForSeed)
         
-        for ii, currentItem in enumerate(visitPointListEcho.current):
-            assert ii <= point_limit, "bad configuration."
-            # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
-            # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
-            #if currentItem.imag < 0:
-            assert type(currentItem) == complex, type(currentItem)
-            drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed)
-            #if seed.imag > 0:
-            drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem)
+        for period in range(1,5):
+            for offset in range(0, period):
+                subView = screenSubViews[get_virtual_2d_index((period-1, offset), size=(4,4))]
+                subViewSeed = tunnel_absolutecpx(seed, camera.screen_settings.view, subView, bound=False)
+                subViewPointList = [tunnel_absolutecpx(point, camera.screen_settings.view, subView, bound=False) for point in visitPointListEcho.current[offset::period]]
+                drawPointList(subViewSeed, subViewPointList, draw_scale=period)
         
         
     print("doing final draw and save...")
@@ -1851,11 +1910,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (4096, 4096)
+RASTER_SIZE = (1024, 1024)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oP/1/c/4096x/"
+OUTPUT_FOLDER = "oP/subViews/with_offsets/1024x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1890,7 +1949,7 @@ def main():
     #for customWindowSize in range(1,1024,8):
     # for subs in [64]: #, 1,32]:
     # center_pos=-0.14-0.86j, sizer=0.75+0.75j
-    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=2), iter_skip=0, iter_limit=256, point_skip=0, point_limit=256, count_scale=2,
+    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=4096, point_skip=0, point_limit=4096, count_scale=0.25,
         fractal_formula={"init_formula":"z=c", "yield_formula":"yield z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError, ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)

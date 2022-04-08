@@ -14,8 +14,21 @@ def assert_equal_or_isinstance(thing0, thing1):
     ...
 """
 
-
-
+def print_and_reduce_repetition(text, details="", _info=[None, 1]):
+    # text = str(thing)
+    
+    if _info[0] == text:
+        _info[1] += 1
+    else:
+        _info[0] = text
+        _info[1] = 1
+        
+    if _info[1] <= 3 or _info[1] == 2**(_info[1].bit_length()-1):
+        print("{} (now repeated x{}). {}".format(str(_info[0]), _info[1], " details: {}".format(details) if details else ""))
+        return True
+    else:
+        return False
+        
 
 
 

@@ -277,18 +277,21 @@ assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2))
 
 
 
-def gen_chunks_as_lists(data, length):
+def gen_chunks_as_lists(data, length, allow_partial=True):
     itemGen = iter(data)
     while True:
         chunk = list(itertools.islice(itemGen, 0, length))
         if len(chunk) == 0:
             return
-        yield chunk
-        if len(chunk) < length:
-            assert_empty(itemGen)
-            return
+        elif len(chunk) == length:
+            yield chunk
         else:
-            assert len(chunk) == length
+            assert 0 < len(chunk) < length
+            assert_empty(itemGen)
+            if not allow_partial:
+                raise AssuranceError("the last chunk was partial.")
+            yield chunk
+            return
     assert False
     
 assert list(gen_chunks_as_lists(range(9), 2)) == [[0,1], [2,3], [4,5], [6,7], [8]]
@@ -317,4 +320,29 @@ def assure_gen_length_is(input_gen, length):
     return itertools.chain(itertools.slice(input_gen, length-1), yield_next_assuredly_last(input_gen))
     
     
+"""
+def yield_next_assuredly_exists(input_gen):
+    try:
+        result = next(input_gen)
+    except StopIteration:
+        raise AssuranceError("next item did not exist!")
+    yield result
+"""
+
+def gen_assure_never_exhausted(input_seq):
+    i = -1
+    for i, item in enumerate(input_seq):
+        yield item
+    raise AssuranceError("input_seq was exhausted after {} items.".format(i+1))
     
+    
+def islice_assuredly_full(input_seq, *other_args):
+    """
+    assert length >= 1
+    for i, item in enumerate(input_seq):
+        yield item
+        if i+1 == length:
+            return
+    raise AssuranceError("a full slice could not be made.")
+    """
+    return itertools.islice(gen_assure_never_exhausted(input_seq), *other_args)
