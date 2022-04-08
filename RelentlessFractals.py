@@ -958,6 +958,16 @@ def inttup_is_in_bounds(int_tup, size):
 def tunnel_absolutecpx(value, view0, view1, bound=True, default=ViewOutOfStrictBoundsError):
     return view1.relativecpx_to_absolutecpx(view0.absolutecpx_to_relativecpx(value, bound=bound, default=default), bound=bound, default=default)
 
+def gen_tunnel_absolutecpx(input_seq, *args, **kwargs):
+    assert "default" not in kwargs
+    for item in input_seq:
+        if item == COMPLEX_NAN:
+            raise ValueError("don't include complex nan in the data!")
+        result = tunnel_absolutecpx(item, *args, **kwargs, default=COMPLEX_NAN)
+        if result == COMPLEX_NAN:
+            continue
+        yield result
+
 
 class View:
     def __init__(self, *, center_pos=None, corner_pos=None, sizer=None):
@@ -1267,7 +1277,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # (path_ver_plus_home_ver)
     # fxpCA(nonaboxMax)
     # journeyWrapToMatRows_exp_unwrapRows
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_subViewsForStepSizes_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_journeyWrapToMatRows_exp_subViewsForMatRows_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1389,13 +1399,14 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
+            # limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
+            # return list(limitedVisitPointGen)
             
-            #journeyMat = MatrixMath.wrap_to_square_matrix_rows(constrainedJourney)
-            #exponentiatedJourneyMat = MatrixMath.matrix_exp(journeyMat)
-            #flatMat = MatrixMath.matrix_rows_flattened_to_list(exponentiatedJourneyMat)
+            journeyMat = MatrixMath.wrap_to_square_matrix_rows(constrainedJourney)
+            exponentiatedJourneyMat = MatrixMath.matrix_exp(journeyMat)
+            # flatMat = MatrixMath.matrix_rows_flattened_to_list(exponentiatedJourneyMat)
+            return list(MatrixMath.gen_matrix_rows(exponentiatedJourneyMat))
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
-            return [item for item in limitedVisitPointGen]
         assert False
             
     
@@ -1410,7 +1421,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem, draw_scale=draw_scale)
     
-    subSide = 8
+    subSide = 4
     
     screenSubViews = list(subView for _, _, subView in camera.screen_settings.view.gen_sub_view_descriptions((subSide, subSide)))
     
@@ -1430,19 +1441,29 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             if CAPTION_RATE_LIMITER.get_judgement():
                 SET_LIVE_STATUS("{}of{}rows".format(y, camera.seed_settings.grid_size[1]))
                 
+        if (x==0):
+            visitPointListEcho.push([])
+            
         if skip_origin and (seed == 0j):
             pointListForSeed = []
         else:
             pointListForSeed = seedToPointList(seed)
-        
         visitPointListEcho.push(pointListForSeed)
         
+        """
         for period in range(1, subSide+1):
             for offset in range(0, period):
                 subView = screenSubViews[get_virtual_2d_index((period-1, offset), size=(subSide, subSide))]
                 subViewSeed = tunnel_absolutecpx(seed, camera.screen_settings.view, subView, bound=False)
-                subViewPointList = [newPoint for newPoint in (tunnel_absolutecpx(point, camera.screen_settings.view, subView, bound=True, default=COMPLEX_NAN) for point in visitPointListEcho.current[offset::period]) if newPoint != COMPLEX_NAN]
+                subViewPointList =  list(gen_tunnel_absolutecpx(visitPointListEcho.current[offset::period], camera.screen_settings.view, subView, bound=True))
                 drawPointList(subViewSeed, subViewPointList, draw_scale=period)
+        """
+        for rowIndex, subView in enumerate(screenSubViews):
+            if rowIndex >= len(visitPointListEcho.current):
+                break
+            subViewSeed = tunnel_absolutecpx(seed, camera.screen_settings.view, subView, bound=False)
+            subViewPointList = list(gen_tunnel_absolutecpx(visitPointListEcho.current[rowIndex], camera.screen_settings.view, subView, bound=True))
+            drawPointList(subViewSeed, subViewPointList)
         
         
     print("doing final draw and save...")
@@ -1921,7 +1942,7 @@ RASTER_SIZE = (512, 512)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oP/subViews/with_offsets/512x/"
+OUTPUT_FOLDER = "oP/subViews/exp_mat_rows/512x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -1956,7 +1977,7 @@ def main():
     #for customWindowSize in range(1,1024,8):
     # for subs in [64]: #, 1,32]:
     # center_pos=-0.14-0.86j, sizer=0.75+0.75j
-    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=4096, point_skip=0, point_limit=4096, count_scale=0.25,
+    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=256, point_skip=0, point_limit=256, count_scale=2,
         fractal_formula={"init_formula":"z=c", "yield_formula":"yield z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError, ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=True, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)

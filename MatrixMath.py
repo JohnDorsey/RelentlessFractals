@@ -10,7 +10,8 @@ from TestingBasics import print_and_reduce_repetition
 
 
 def matrix_abs(matA):
-    return math.hypot(*matA.flatten().tolist()[0])
+    return math.hypot(*[abs(item) for item in matA.flatten().tolist()[0]])
+assert matrix_abs(numpy.matrix([[0, 0], [1j, 0]])) == 1.0
     
     
 def get_normalized_matrix(matA):
@@ -31,6 +32,10 @@ assert not matrix_eq(numpy.matrix('0 1; 2 3'), numpy.matrix('5 6; 7 8'))
 def matrix_rows_flattened_to_list(matA):
     return matA.flatten().tolist()[0]
 
+
+def gen_matrix_rows(matA):
+    for y in range(matA.shape[0]):
+        yield matA[y].tolist()[0]
 
 
 
@@ -100,10 +105,10 @@ _float_factorials = [float(math.factorial(i)) for i in range(0,171)]
 def matrix_exp(matA): # , fast=False):
     # termGen = ((matA**n)/_float_factorials[n] for n in range(0,171)) # multiplying out the power one multiplication per loop is about 5-10x faster for 1024x1024 matrices.
     
-    result = matA*0.0
-    previousResult = matA*0.0
+    result = identity_matrix(matA.shape[0], scale=complex(0.0, 0.0))
+    previousResult = identity_matrix(matA.shape[0], scale=complex(0.0, 0.0))
     
-    powerOfMatA = identity_matrix(matA.shape[0], scale=1.0)
+    powerOfMatA = identity_matrix(matA.shape[0], scale=complex(1.0, 0.0))
     for n in range(0, 171):
         if n > 0:
             powerOfMatA *= matA
@@ -115,7 +120,7 @@ def matrix_exp(matA): # , fast=False):
             # print("took {} iters.".format(i))
             return result
     if print_and_reduce_repetition("matrix_exp: WARNING: ran out of precision for factorial! inaccurate result!"):
-        error = result-previousResul
+        error = result-previousResult
         errorAbs = matrix_abs(error)
         print("    last error size was {}, or relatively {}.".format(errorAbs, errorAbs/matrix_abs(result)))
     return result
