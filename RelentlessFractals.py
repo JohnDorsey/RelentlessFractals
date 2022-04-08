@@ -56,6 +56,7 @@ CAPTION_RATE_LIMITER = PygameDashboard.SimpleRateLimiter(1.0)
 STATUS_RATE_LIMITER = PygameDashboard.RateLimiter(3.0)
 PASSIVE_DISPLAY_FLIP_RATE_LIMITER = PygameDashboard.RateLimiter(30.0)
 
+COMPLEX_NAN = complex(math.nan, math.nan)
 
 
 
@@ -930,10 +931,12 @@ class CoordinateError(Exception):
 class ExtremeScaleWarning(Exception):
     pass
 """
-class ViewBaseCoordinateError(Exception):
+"""
+class ViewOutOfBoundsError(Exception):
     pass
+"""
 
-class ViewOutOfBoundsError(ViewBaseCoordinateError):
+class ViewBaseCoordinateError(Exception):
     pass
     
 class ViewOutOfStrictBoundsError(ViewBaseCoordinateError):
@@ -953,7 +956,7 @@ def inttup_is_in_bounds(int_tup, size):
     return not (int_tup[0] < 0 or int_tup[0] >= size[0] or int_tup[1] < 0 or int_tup[1] >= size[1])
 
 def tunnel_absolutecpx(value, view0, view1, bound=True, default=ViewOutOfStrictBoundsError):
-    return view1.relativecpx_to_absolutecpx(view0.absolutecpx_to_relativecpx(value, bound=bound), bound=bound, default=default)
+    return view1.relativecpx_to_absolutecpx(view0.absolutecpx_to_relativecpx(value, bound=bound, default=default), bound=bound, default=default)
 
 
 class View:
@@ -978,8 +981,8 @@ class View:
     def relativecpx_to_absolutecpx(self, value, *, bound=True, default=ViewOutOfStrictBoundsError):
         if bound:
             if not relativecpx_is_in_bounds(value):
-                if isinstance(default, Exception):
-                    raise default
+                if isinstance(default, type):
+                    raise default()
                 else:
                     return default
         return self.corner_pos + complex(self.sizer.real*value.real, self.sizer.imag*value.imag)
@@ -989,9 +992,12 @@ class View:
         result = complex(positionAdjusted.real/self.sizer.real, positionAdjusted.imag/self.sizer.imag)
         if bound:
             if not relativecpx_is_in_bounds(result):
-                if isinstance(default, Exception):
-                    raise default
+                if isinstance(default, type):
+                    #print("raising a {}.".format(default))
+                    raise default()
+                    
                 else:
+                    #print("returning {}.".format(default))
                     return default
         return result
         
@@ -1404,8 +1410,9 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem, draw_scale=draw_scale)
     
+    subSide = 8
     
-    screenSubViews = list(subView for _, _, subView in camera.screen_settings.view.gen_sub_view_descriptions((8,8)))
+    screenSubViews = list(subView for _, _, subView in camera.screen_settings.view.gen_sub_view_descriptions((subSide, subSide)))
     
     
     print("done initializing.")
@@ -1430,11 +1437,11 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
         
         visitPointListEcho.push(pointListForSeed)
         
-        for period in range(1,5):
+        for period in range(1, subSide+1):
             for offset in range(0, period):
-                subView = screenSubViews[get_virtual_2d_index((period-1, offset), size=(4,4))]
+                subView = screenSubViews[get_virtual_2d_index((period-1, offset), size=(subSide, subSide))]
                 subViewSeed = tunnel_absolutecpx(seed, camera.screen_settings.view, subView, bound=False)
-                subViewPointList = [tunnel_absolutecpx(point, camera.screen_settings.view, subView, bound=False) for point in visitPointListEcho.current[offset::period]]
+                subViewPointList = [newPoint for newPoint in (tunnel_absolutecpx(point, camera.screen_settings.view, subView, bound=True, default=COMPLEX_NAN) for point in visitPointListEcho.current[offset::period]) if newPoint != COMPLEX_NAN]
                 drawPointList(subViewSeed, subViewPointList, draw_scale=period)
         
         
@@ -1910,11 +1917,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (1024, 1024)
+RASTER_SIZE = (512, 512)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oP/subViews/with_offsets/1024x/"
+OUTPUT_FOLDER = "oP/subViews/with_offsets/512x/"
 
 
 SET_LIVE_STATUS("loading...")
