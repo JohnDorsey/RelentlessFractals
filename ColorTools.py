@@ -48,4 +48,12 @@ for stepSize in ["stepSize", 1,2,4,8,16]:
             print(str(len(set(atan_squish_to_byteint_unsigned_uniform_nearest(i*stepSize) for i in range(hitCount)))).rjust(6, " "), end="")
     print("")
 """
-
+def preview_inverted(input_function, test_range):
+    x = 0
+    for printIndex, num in enumerate(test_range):
+        while input_function(x) < num:
+            x += 1
+        print("{}->{}  ".format(x, input_function(x)), end="")
+        if printIndex%8 == 0:
+            print("")
+            

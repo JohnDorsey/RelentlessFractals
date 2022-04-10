@@ -5,7 +5,8 @@ import itertools
 
 
 import TestingBasics
-from TestingBasics import get_shared_value, test_nearly_equal, assert_nearly_equal, raises_instanceof, assert_equal, assert_isinstance, AssuranceError
+from SeqTests import get_shared_value
+from TestingBasics import test_nearly_equal, assert_nearly_equal, raises_instanceof, assert_equal, assert_isinstance, AssuranceError
 from PureGenTools import peek_first_and_iter
 
 import Trig

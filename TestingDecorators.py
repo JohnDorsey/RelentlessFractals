@@ -3,7 +3,7 @@ import copy
 import itertools
 import operator
 
-from TestingBasics import get_shared_value
+from SeqTests import get_shared_value
 
 from ComplexGeometry import multi_traverse
 

@@ -1,9 +1,6 @@
 
-import operator
 
-
-from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError
-from PureGenTools import peek_first_and_iter, ProvisionError, gen_track_previous
+from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus
 
 
 COMPLEX_ERROR_TOLERANCE = (2**-36)
@@ -28,23 +25,7 @@ def print_and_reduce_repetition(text, details="", _info=[None, 1]):
         return True
     else:
         return False
-        
 
-
-
-
-    
-
-
-
-def summon_cactus(message, _persistent_cacti=dict()):
-    if message in _persistent_cacti:
-        return _persistent_cacti[message]
-    else:
-        _persistent_cacti[message] = type(message, (), dict())()
-        if len(_persistent_cacti) >= 64 and len(_persistent_cacti) in [2**n for n in range(6,24)]:
-            print("summon_cactus: warning: {} unique cacti sure is a lot. Is memory being wasted by their inadvisable mass-production? If not, adjust the warning threshold.".format(len(_persistent_cacti)))
-        return _persistent_cacti[message]
 
 
 
@@ -157,7 +138,7 @@ def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
         assert result is True, (fun_to_test, reference_class, result)
         """
         resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
-        assert isinstance(resultingException, exception_types), "assert_raises_instanceof: expected exception type {}, but got (exception={}, value={}).".format(exception_types, resultingException, resultingValue)
+        assert isinstance(resultingException, exception_types), "assert_raises_instanceof: expected exception type(s) {}, but got (exception={}, value={}).".format(exception_types, resultingException, resultingValue)
     return inner
 
 """
@@ -170,79 +151,6 @@ def get_only_non_none_value(input_seq):
     assert result is not None, "There were no non-none values."
     return result
 """
-
-
-
-
-
-
-
-
-
-def all_are_equal_to(input_seq, *, example=None, equality_test_fun=operator.eq):
-    for item in input_seq:
-        if not equality_test_fun(example, item):
-            return False
-    return True
-assert all_are_equal_to([2,3], example=2) == False
-assert all_are_equal_to([], example=2) == True
-assert all_are_equal_to([1], example=2) == False
-
-
-def all_are_equal(input_seq, equality_test_fun=operator.eq):
-    first, inputGen = peek_first_and_iter(input_seq)
-    return all_are_equal_to(inputGen, example=first, equality_test_fun=equality_test_fun)
-    
-erb = get_exception_raised_by(all_are_equal)([])
-assert isinstance(erb, ProvisionError), repr(erb)
-assert all_are_equal("aaaaa")
-assert not all_are_equal("aaaba")
-del erb
-
-    
-def get_shared_value(input_seq, equality_test_fun=operator.eq):
-    result, inputGen = peek_first_and_iter(input_seq)
-    for i, item in enumerate(inputGen):
-        if not equality_test_fun(result, item):
-            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i, repr(item), repr(result)))
-    return result
-
-assert get_shared_value("aaaaa") == "a"
-assert_raises_instanceof(get_shared_value, AssuranceError)("aaaba")
-
-
-
-
-
-def ints_are_consecutive_increasing(input_seq):
-    """
-    first, inputGen = peek_first_and_iter(input_seq)
-    if first
-    for compNum, newNum in enumerate(inputGen, start=first+1):
-        if new
-        if not compNum == newNum:
-    """
-    for i, (previous, current) in enumerate(gen_track_previous(input_seq)):
-        assert isinstance(current, int)
-        if i == 0:
-            continue
-        else:
-            if current != previous + 1:
-                return False
-    return True
-
-assert ints_are_consecutive_increasing([5,6,7,8,9])
-assert not ints_are_consecutive_increasing([5,6,7,8,10])
-assert not ints_are_consecutive_increasing([9,8,7,6,5])
-
-    
-def ints_are_contiguous(input_seq):
-    return ints_are_consecutive_increasing(sorted(input_seq))
-            
-assert ints_are_contiguous([5,8,6,7])
-assert ints_are_contiguous([-2,1,-1,0,-3])
-assert not ints_are_contiguous([3,4,2,0,-1])
-
 
 
 
@@ -294,6 +202,7 @@ def assert_single_arg_fun_obeys_dict(fun_to_test, q_and_a_dict):
     for i, pair in enumerate(q_and_a_dict.items()):
         testResult = fun_to_test(pair[0])
         assert testResult == pair[1], "failure for test {}, pair={}, testResult={}.".format(i, pair, testResult)
+        
 assert_single_arg_fun_obeys_dict(str, {-1:"-1", 5:"5", complex(1,2):"(1+2j)"})
 assert default_to_exception_type_raised_by(assert_single_arg_fun_obeys_dict)(int, {"1":2, "3":4}) == AssertionError
 assert default_to_exception_type_raised_by(assert_single_arg_fun_obeys_dict)(int, {"a":2, "c":4}) == ValueError

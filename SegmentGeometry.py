@@ -6,8 +6,8 @@ import operator
 
 from enum import Enum
 
-
-from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, get_shared_value, assert_isinstance, AssuranceError
+from SeqTests import get_shared_value
+from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError
 from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
 from PureGenTools import peek_first_and_iter, gen_chunks_as_lists, assert_empty

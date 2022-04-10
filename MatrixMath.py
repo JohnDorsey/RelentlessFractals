@@ -3,6 +3,7 @@ import itertools
 
 import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS'] = '1'; # https://stackoverflow.com/questions/17053671/how-do-you-stop-numpy-from-multithreading
 import numpy
+# NumpyLinAlgError = numpy.linalg.LinAlgError
 
 from PureGenTools import gen_chunks_as_lists
 from TestingBasics import print_and_reduce_repetition
@@ -36,6 +37,10 @@ def matrix_rows_flattened_to_list(matA):
 def gen_matrix_rows(matA):
     for y in range(matA.shape[0]):
         yield matA[y].tolist()[0]
+
+def gen_matrix_columns(matA):
+    for x in range(matA.shape[1]):
+        yield matA[:,x].tolist()[0]
 
 
 
@@ -102,13 +107,18 @@ assert (identity_matrix(5, scale=3) == numpy.matrix('3 0 0 0 0; 0 3 0 0 0; 0 0 3
 
 _float_factorials = [float(math.factorial(i)) for i in range(0,171)]
 
-def matrix_exp(matA): # , fast=False):
+def matrix_exp(matA, *, dtype=complex): # , fast=False):
     # termGen = ((matA**n)/_float_factorials[n] for n in range(0,171)) # multiplying out the power one multiplication per loop is about 5-10x faster for 1024x1024 matrices.
+    if dtype in (complex, float, int):
+        dtypeOne = dtype("1")
+    else:
+        raise TypeError(dtype)
+    assert matA.dtype == dtype, (matA[0:5,0:5], type(matA[0,0]), matA.dtype)
     
-    result = identity_matrix(matA.shape[0], scale=complex(0.0, 0.0))
-    previousResult = identity_matrix(matA.shape[0], scale=complex(0.0, 0.0))
+    result = identity_matrix(matA.shape[0], scale=dtypeOne*0)
+    previousResult = identity_matrix(matA.shape[0], scale=dtypeOne*0)
     
-    powerOfMatA = identity_matrix(matA.shape[0], scale=complex(1.0, 0.0))
+    powerOfMatA = identity_matrix(matA.shape[0], scale=dtypeOne)
     for n in range(0, 171):
         if n > 0:
             powerOfMatA *= matA
@@ -125,4 +135,26 @@ def matrix_exp(matA): # , fast=False):
         print("    last error size was {}, or relatively {}.".format(errorAbs, errorAbs/matrix_abs(result)))
     return result
     
-assert matrix_eq(matrix_exp(numpy.matrix('0 -1; 1 0')*math.pi), identity_matrix(2, scale=-1), equality_distance=0.0001)
+assert matrix_eq(matrix_exp(numpy.matrix('0 -1; 1 0')*math.pi, dtype=float), identity_matrix(2, scale=-1), equality_distance=0.0001)
+
+
+
+class SingularMatrixInversionError(Exception):
+    pass
+
+class OtherMatrixInversionError(Exception):
+    pass
+
+def matrix_inv(matA):
+    """
+    don't use matA.I, as it does not show errors when the matrix is not invertable.
+    """
+    try:
+        result = numpy.linalg.inv(matA)
+    except numpy.linalg.LinAlgError as lae:
+        if lae.args == ('Singular matrix',):
+            raise SingularMatrixInversionError(*lae.args)
+        else:
+            raise OtherMatrixInversionError(*lae.args)
+    return result
+        
