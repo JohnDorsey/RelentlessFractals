@@ -33,7 +33,7 @@ from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, peek_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists, higher_range_by_corners, corners_to_range_descriptions
+from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists, higher_range_by_corners, corners_to_range_descriptions
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -576,7 +576,7 @@ def gen_path_pair_mutual_intersections(journies, intersection_fun=None):
 
 def gen_record_breakers(input_seq, score_fun=None):
     try:
-        first, inputGen = peek_first_and_iter(input_seq)
+        first, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
         return
     record = score_fun(first)
@@ -590,7 +590,7 @@ def gen_record_breakers(input_seq, score_fun=None):
 
 def gen_flag_multi_record_breakers(input_seq, score_funs=None):
     try:
-        first, inputGen = peek_first_and_iter(input_seq)
+        first, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
         return
     records = [scoreFun(first) for scoreFun in score_funs]
@@ -617,7 +617,7 @@ def gen_flag_multi_record_breakers(input_seq, score_funs=None):
     
 def gen_track_sum(input_seq):
     try:
-        sumSoFar, inputGen = peek_first_and_iter(input_seq)
+        sumSoFar, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
         return
     yield (sumSoFar, sumSoFar)
@@ -638,7 +638,7 @@ def gen_track_decaying_mean(input_seq, feedback=None):
     feedbackCompliment = 1.0-feedback
     
     try:
-        first, inputGen = peek_first_and_iter(input_seq)
+        first, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
         return
     memoryValue = feedbackCompliment*first
@@ -1283,8 +1283,9 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # test_bb_8xquarterbevel                         # greedyShortPathFromSeed_rectcross_RallGincrBinci      # _sortedBySeedmanhdist
     # (wf(z,normz)-wf(0,normc))_(w={}*{})_rectcross  # pathDownsampCpxDecompMedian_windowWidth{}_polarcross  # _draw(top(path)bottom(home))
     # (path_ver_plus_home_ver)                       # fxpCA(nonaboxMax)                                     # journeyWrapToMatRows_exp_unwrapRows
+    # rowOfJournsToMatCols_fill(1+1j)_exp
     
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_rowOfJournsToMatCols_fill(1+1j)_exp_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_wrapJournToMatRows_sin_unwrap_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1377,6 +1378,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             normedSeed = get_normalized(seed, undefined_result=0j)
             if skip_origin:
                 assert normedSeed != 0j
+                assert seed != 0j
                 
             # normedJourneyMinusNormedC = gen_suppress_exceptions(((w_compliment*item+w*get_normalized(item, undefined_result=0j))-(w_compliment*0+w*normedSeed) for item in constrainedJourney), (ZeroDivisionError,))
             
@@ -1405,15 +1407,18 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # journeyAndDecayingMeanSeqLadderRungSelfIntersections = gen_seg_seq_self_intersections(journeyWithTrackedDecayingMean, intersection_fun=SegmentGeometry.segment_intersection)
             # journeySelfNonIntersections = gen_path_self_non_intersections(constrainedJourney, intersection_fun=SegmentGeometry.segment_intersection)
             
-            limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
-            return list(limitedVisitPointGen)
+            # limitedVisitPointGen = gen_suppress_exceptions(itertools.islice(constrainedJourney, point_skip, point_limit), (ProvisionError,))
+            # return list(limitedVisitPointGen)
             
-            """
+            
             journeyMat = MatrixMath.wrap_to_square_matrix_rows(constrainedJourney)
+            sineJourneyMat = MatrixMath.matrix_sin(journeyMat)
+            return MatrixMath.matrix_rows_flattened_to_list(sineJourneyMat)
+            """
             # exponentiatedJourneyMat = MatrixMath.matrix_exp(journeyMat)
             try:
-                invertedJourneyMat = journeyMat.I
-            except MatrixMath.NumpyLinAlgError: # singular matrix
+                invertedJourneyMat = MatrixMAth.matrix_inv(journeyMat)
+            except MatrixMath.SingularMatrixInversionError as smie: # singular matrix
                 return []
             # flatMat = MatrixMath.matrix_rows_flattened_to_list(exponentiatedJourneyMat)
             return list(MatrixMath.gen_matrix_rows(invertedJourneyMat))
@@ -1432,6 +1437,8 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed, draw_scale=draw_scale)
             #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem, draw_scale=draw_scale)
+    
+    # def drawPointLists
     
     subSideSize = 1
     inRowMode = False
@@ -1484,6 +1491,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
                     print("singular matrix of shape {}.".format(currentMat.shape))
                     continue
                 """
+                assert False
                     
                 for pointListX, pointList in enumerate(MatrixMath.gen_matrix_columns(exponentiatedMat)):
                     pointListSeed = camera.screen_settings.view.inttup_to_absolutecpx((pointListX, y), camera.seed_settings.grid_size)
@@ -1491,6 +1499,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
                     drawPointList(pointListSeed, pointList)
             
         else:
+            assert not inRowMode
             # if (x==0):
             #    visitPointListEcho.push([])
             
@@ -1988,11 +1997,11 @@ def SET_LIVE_STATUS(status_text):
 pygame.init()
 pygame.display.init()
 
-RASTER_SIZE = (512, 512)
+RASTER_SIZE = (1024, 1024)
 _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
 COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oQ/inv/128x/b/"
+OUTPUT_FOLDER = "oR_sin/1024x/"
 
 
 SET_LIVE_STATUS("loading...")
@@ -2027,7 +2036,7 @@ def main():
     #for customWindowSize in range(1,1024,8):
     # for subs in [64]: #, 1,32]:
     # center_pos=-0.14-0.86j, sizer=0.75+0.75j
-    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=2), iter_skip=0, iter_limit=1024, point_skip=0, point_limit=1024, count_scale=4,
+    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=4096, point_skip=0, point_limit=4096, count_scale=8,
         fractal_formula={"init_formula":"z=c", "yield_formula":"yield z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError, ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=False, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)

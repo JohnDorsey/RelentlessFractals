@@ -16,7 +16,7 @@ class MysteriousError(Exception):
     pass
 
 
-def peek_first_and_iter(input_seq):
+def take_first_and_iter(input_seq):
     inputGen = iter(input_seq)
     try:
         first = next(inputGen)
@@ -205,7 +205,7 @@ assert (list(gen_track_previous(range(5,10))) == [(None,5),(5,6),(6,7),(7,8),(8,
         
 def gen_track_previous_full(input_seq, allow_waste=False):
     try:
-        previousItem, inputGen = peek_first_and_iter(input_seq)
+        previousItem, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
         if allow_waste:
             return

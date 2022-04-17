@@ -10,7 +10,7 @@ from SeqTests import get_shared_value
 from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError
 from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
-from PureGenTools import peek_first_and_iter, gen_chunks_as_lists, assert_empty
+from PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty
 
 import ComplexGeometry
 from ComplexGeometry import point_polar_to_rect, point_rect_to_polar, ComplexOnPolarSeam
@@ -93,7 +93,7 @@ def lerp_confined(point0, point1, t):
     
 
 def find_left_min(data, enumerator_fun=enumerate):
-    record, itemGen = peek_first_and_iter(enumerator_fun(data))
+    record, itemGen = take_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] < record[1]:
             record = item
@@ -103,7 +103,7 @@ assert find_left_min([9,8,7,6,5,6,7,8,9]) == (4, 5)
     
 
 def find_left_max(data, enumerator_fun=enumerate):
-    record, itemGen = peek_first_and_iter(enumerator_fun(data))
+    record, itemGen = take_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] > record[1]:
             record = item
@@ -111,7 +111,7 @@ def find_left_max(data, enumerator_fun=enumerate):
     
     
 def find_only_min(data, enumerator_fun=enumerate):
-    record, itemGen = peek_first_and_iter(enumerator_fun(data))
+    record, itemGen = take_first_and_iter(enumerator_fun(data))
     for item in itemGen:
         if item[1] < record[1]:
             record = item

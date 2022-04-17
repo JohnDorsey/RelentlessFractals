@@ -1,11 +1,12 @@
 import math
 import itertools
+import copy
 
 import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS'] = '1'; # https://stackoverflow.com/questions/17053671/how-do-you-stop-numpy-from-multithreading
 import numpy
 # NumpyLinAlgError = numpy.linalg.LinAlgError
 
-from PureGenTools import gen_chunks_as_lists
+from PureGenTools import gen_chunks_as_lists, take_first_and_iter
 from TestingBasics import print_and_reduce_repetition
 
 
@@ -105,19 +106,43 @@ assert (identity_matrix(5, scale=3) == numpy.matrix('3 0 0 0 0; 0 3 0 0 0; 0 0 3
 
 
 
+
+
+
+
+    
+def evaluate_series_until_zero(term_seq):
+    readOnlyTerm, termGen = take_first_and_iter(term_seq)
+    result = copy.deepcopy(readOnlyTerm)
+    
+    for readOnlyTerm in termGen:
+        result += readOnlyTerm
+        isZero = (not readOnlyTerm.any()) if isinstance(readOnlyTerm, numpy.matrix) else (abs(readOnlyTerm) == 0)
+        if isZero:
+            return result
+    assert False, "ran out of items?"
+    
+    
+
 _float_factorials = [float(math.factorial(i)) for i in range(0,171)]
 
-def matrix_exp(matA, *, dtype=complex): # , fast=False):
-    # termGen = ((matA**n)/_float_factorials[n] for n in range(0,171)) # multiplying out the power one multiplication per loop is about 5-10x faster for 1024x1024 matrices.
-    if dtype in (complex, float, int):
-        dtypeOne = dtype("1")
-    else:
-        raise TypeError(dtype)
-    assert matA.dtype == dtype, (matA[0:5,0:5], type(matA[0,0]), matA.dtype)
+def matrix_exp_series_term_gen(matA):
+    term = matA**0
+    # termCopy = matA**0
+    yield term
+    for n in itertools.count(1):
+        term *= matA
+        term /= n
+        # numpy.copyto(dst=termCopy, src=term)
+        yield term
+    assert False
     
+    
+"""
+
+old:
     result = identity_matrix(matA.shape[0], scale=dtypeOne*0)
     previousResult = identity_matrix(matA.shape[0], scale=dtypeOne*0)
-    
     powerOfMatA = identity_matrix(matA.shape[0], scale=dtypeOne)
     for n in range(0, 171):
         if n > 0:
@@ -135,7 +160,60 @@ def matrix_exp(matA, *, dtype=complex): # , fast=False):
         print("    last error size was {}, or relatively {}.".format(errorAbs, errorAbs/matrix_abs(result)))
     return result
     
-assert matrix_eq(matrix_exp(numpy.matrix('0 -1; 1 0')*math.pi, dtype=float), identity_matrix(2, scale=-1), equality_distance=0.0001)
+    
+def matrix_exp(matA, *, dtype=complex): # , fast=False):
+    # termGen = ((matA**n)/_float_factorials[n] for n in range(0,171)) # multiplying out the power one multiplication per loop is about 5-10x faster for 1024x1024 matrices.
+    if dtype in (complex, float, int):
+        dtypeOne = dtype("1")
+    else:
+        raise TypeError(dtype)
+    assert matA.dtype == dtype, (matA[0:5,0:5], type(matA[0,0]), matA.dtype)
+    
+    
+    result = matA*0
+    assert hasattr(matA, "__any__")
+    return evaluate_series_until_zero(matrix_exp_series_term_gen(matA))
+"""
+
+def matrix_exp(matA):
+    return evaluate_series_until_zero(matrix_exp_series_term_gen(matA))
+    
+assert matrix_eq(matrix_exp(numpy.matrix('0 -1; 1 0')*math.pi), identity_matrix(2, scale=-1), equality_distance=0.0001)
+
+
+
+def matrix_sin_series_term_gen(matA):
+    # https://www.mathsisfun.com/algebra/taylor-series.html
+    # x - x**3/3! + x**5/5! - ...
+    # a_n = ((-1)**n / (2n+1)!)*(x**(2n+1))
+    # a_n = a_(n-1) * (-1) / (2*n + 1) / (2*n) * (x**2)
+    term = copy.deepcopy(matA)
+    yield term
+    matASquared = matA**2
+    for n in itertools.count(1):
+        term *= matASquared
+        term *= -1 / ((2*n+1) * (2*n))
+        yield term
+    assert False
+    
+def matrix_sin(matA):
+    return evaluate_series_until_zero(matrix_sin_series_term_gen(matA))
+    
+
+def matrix_cos_series_term_gen(matA):
+    # 1 - x**2/2! + x**4/4!
+    # a_n = a_(n-1) / 2n / 2n-1 * x**2
+    term = matA**0
+    yield term
+    matASquared = matA**2
+    for n in itertools.count(1):
+        term *= matASquared
+        term *= -1 / ((2*n) * (2*n - 1))
+        yield term
+    assert False
+        
+def matrix_cos(matA):
+    return evaluate_series_until_zero(matrix_cos_series_term_gen(matA))
 
 
 

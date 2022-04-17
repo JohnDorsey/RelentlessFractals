@@ -2,7 +2,7 @@
 import operator
 
 
-from PureGenTools import peek_first_and_iter, ProvisionError, gen_track_previous
+from PureGenTools import take_first_and_iter, ProvisionError, gen_track_previous
 
 
 
@@ -20,7 +20,7 @@ assert all_are_equal_to([1], example=2) == False
 
 
 def all_are_equal(input_seq, equality_test_fun=operator.eq):
-    first, inputGen = peek_first_and_iter(input_seq)
+    first, inputGen = take_first_and_iter(input_seq)
     return all_are_equal_to(inputGen, example=first, equality_test_fun=equality_test_fun)
 
 """
@@ -33,7 +33,7 @@ del erb
 
     
 def get_shared_value(input_seq, equality_test_fun=operator.eq):
-    result, inputGen = peek_first_and_iter(input_seq)
+    result, inputGen = take_first_and_iter(input_seq)
     for i, item in enumerate(inputGen):
         if not equality_test_fun(result, item):
             raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i, repr(item), repr(result)))
