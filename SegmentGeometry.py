@@ -8,7 +8,7 @@ from enum import Enum
 
 from SeqTests import get_shared_value
 from TestingAtoms import assert_equal, assert_isinstance
-from TestingBasics import assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError, get_exception_raised_by, get_value_returned_or_exception_raised_by
+from TestingBasics import assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError, get_value_returned_or_exception_raised_by
 from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
 from PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty

@@ -38,6 +38,8 @@ def assert_equal(*things, start_message="", message=""):
             if hasattr(things[0], "__len__") and hasattr(things[1], "__len__"):
                 if len(things[0]) != len(things[1]):
                     baseMessage += " Their lengths differ ({} and {}).".format(len(things[0]), len(things[1]))
+                else:
+                    baseMessage += " Their lengths are the same."
             if all(isinstance(thing, dict) for thing in things):
                 baseMessage += " Both are dicts."
                 keySets = tuple(thing.keys() for thing in things)

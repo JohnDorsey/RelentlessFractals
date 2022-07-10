@@ -1,5 +1,6 @@
 
-import pathlib
+#import pathlib
+import functools
 
 from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus
 
@@ -12,6 +13,14 @@ def assert_equal_or_isinstance(thing0, thing1):
     ...
 """
 
+def floor_binary_round_int(value):
+    assert isinstance(value, int), type(value)
+    assert value > 0
+    return 2**(value.bit_length()-1)
+
+def is_binary_round_int(value):
+    return value == floor_round_binary_int(value)
+
 def print_and_reduce_repetition(text, details="", _info=[None, 1]):
     # text = str(thing)
     
@@ -21,7 +30,7 @@ def print_and_reduce_repetition(text, details="", _info=[None, 1]):
         _info[0] = text
         _info[1] = 1
         
-    if _info[1] <= 3 or _info[1] == 2**(_info[1].bit_length()-1):
+    if _info[1] <= 3 or is_binary_round_int(_info[1]):
         print("{} (now repeated x{}). {}".format(str(_info[0]), _info[1], " details: {}".format(details) if details else ""))
         return True
     else:
@@ -36,40 +45,40 @@ def print_and_reduce_repetition(text, details="", _info=[None, 1]):
 
 
 
+"""
 
-
-def dict_swiss_cheese_access(dict_list, key):
+def _dict_swiss_cheese_access(dict_list, key):
     i = 0
     for i, currentDict in enumerate(dict_list, 1):
         if key in currentDict:
             return currentDict[key]
     raise KeyError("could not find key {} in any of {} dicts.".format(repr(key), i + 1))
     
-assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 5) == 6
-assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 7) == 80
-assert dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 9) == 10
+assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 5) == 6
+assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 7) == 80
+assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 9) == 10
 
     
-def dict_swiss_cheese_union(dict_list):
+def _dict_swiss_cheese_union(dict_list):
     assert not iter(dict_list) is iter(dict_list)
     keySet = set()
     for currentDict in dict_list:
         keySet.update(set(currentDict.keys()))
     result = dict()
     for key in keySet:
-        result[key] = dict_swiss_cheese_access(dict_list, key)
+        result[key] = _dict_swiss_cheese_access(dict_list, key)
     return result
     
-assert_equal(dict_swiss_cheese_union([{1:2, 2:4, 3:6}, {3:300, 4:400}]), {1:2, 2:4, 3:6, 4:400})
+assert_equal(_dict_swiss_cheese_union([{1:2, 2:4, 3:6}, {3:300, 4:400}]), {1:2, 2:4, 3:6, 4:400})
 
 
-def non_overridably_curry_kwarg_dict(input_fun, kwarg_dict):
+def _non_overridably_curry_kwarg_dict(input_fun, kwarg_dict):
     # raise NotImplementedError("not tested! also, this is a wheel reinvention of builtin partials!")
     def inner(*args, **kwargs):
         return input_fun(*args, **kwarg_dict, **kwargs)
     return inner
-print("tests needed for non_overridably_curry_kwarg_dict")
-
+print("tests needed for _non_overridably_curry_kwarg_dict")
+"""
 
 
 """
@@ -115,8 +124,8 @@ def get_value_returned_or_exception_raised_by(fun_to_wrap):
         
 
 
-def get_exception_raised_by(fun_to_test):
-    print("TestingBasics.get_exception_raised_by: todo: maybe should be changed to have more obvious behavior of failing when no exception is raised.")
+def get_exception_or_none_raised_by(fun_to_test):
+    # print("TestingBasics.get_exception_raised_by: todo: maybe should be changed to have more obvious behavior of failing when no exception is raised.")
     def inner(*args, **kwargs):
         result = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)[0]
         assert isinstance(result, Exception) or result is None
@@ -128,7 +137,7 @@ def get_exception_raised_by(fun_to_test):
     
 def raises_instanceof(fun_to_test, exception_types, debug=False):
     def raises_instanceof_inner(*args, **kwargs):
-        exceptionResult = get_exception_raised_by(fun_to_test)(*args, **kwargs)
+        exceptionResult = get_exception_or_none_raised_by(fun_to_test)(*args, **kwargs)
         result = isinstance(exceptionResult, exception_types)
         if debug and not result:
             print("raises_instanceof: actually got exception {}, not of type {}.".format(repr(exceptionResult), repr(exception_types)))
@@ -137,8 +146,8 @@ def raises_instanceof(fun_to_test, exception_types, debug=False):
     
 def testRaiseIndexError(*args):
     raise IndexError()
-assert isinstance(get_exception_raised_by(testRaiseIndexError)(1,2,3), IndexError)
-assert isinstance(get_exception_raised_by(str)(1), type(None))
+assert isinstance(get_exception_or_none_raised_by(testRaiseIndexError)(1,2,3), IndexError)
+assert isinstance(get_exception_or_none_raised_by(str)(1), type(None))
 assert raises_instanceof(testRaiseIndexError, IndexError)(1,2,3) == True
 assert raises_instanceof(str, IndexError)(1) == False
 del testRaiseIndexError
@@ -151,7 +160,7 @@ def assure_raises_instanceof(fun_to_test, exception_types):
         return resultingException
     return assure_raises_instanceof_inner
 
-
+"""
 def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
     print("TestingBasics: warning: assert_raises_instanceof is deprecated. use assure_raises_instanceof, which performs the same test but returns the caught exception.")
     if str(pathlib.Path.cwd()).split("/")[-1] == "Battleship":
@@ -164,7 +173,8 @@ def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
         resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
         assert isinstance(resultingException, exception_types), "assert_raises_instanceof: the wrapped function {} was expected to raise {}, but instead raised (exception={}, value={}).".format(fun_to_test.__name__, exception_types, repr(resultingException), resultingValue)
     return assert_raises_instanceof_inner
-    
+"""
+
 
 """
 def get_only_non_none_value(input_seq):
@@ -210,8 +220,8 @@ def _base_default_to_exception_raised_by(fun_to_test, classify_exception=False):
             assert packedResult[0] is None
             return packedResult[1]
     return inner
-default_to_exception_raised_by = non_overridably_curry_kwarg_dict(_base_default_to_exception_raised_by, {"classify_exception":False})
-default_to_exception_type_raised_by = non_overridably_curry_kwarg_dict(_base_default_to_exception_raised_by, {"classify_exception":True})
+default_to_exception_raised_by = functools.partial(_base_default_to_exception_raised_by, classify_exception=False)
+default_to_exception_type_raised_by = functools.partial(_base_default_to_exception_raised_by, classify_exception=True)
 
 assert_equal(default_to_exception_raised_by(int)("5"), 5)
 assert isinstance(default_to_exception_raised_by(int)("a"), ValueError)

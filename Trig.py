@@ -1,10 +1,12 @@
 import math
+import functools
 
 import TestingBasics
 from TestingBasics import assert_equal, assert_less, assert_nearly_equal
 
 FUN_REPLACEMENT_ERROR_TOLERANCE = 10.0**-12
-_assertNearlyEqualTrig = TestingBasics.non_overridably_curry_kwarg_dict(assert_nearly_equal, {"error_tolerance":FUN_REPLACEMENT_ERROR_TOLERANCE})
+#_assertNearlyEqualTrig = TestingBasics.non_overridably_curry_kwarg_dict(assert_nearly_equal, {"error_tolerance":FUN_REPLACEMENT_ERROR_TOLERANCE})
+_assertNearlyEqualTrig = functools.partial(assert_nearly_equal, error_tolerance=FUN_REPLACEMENT_ERROR_TOLERANCE)
 
 
 atan = math.atan
