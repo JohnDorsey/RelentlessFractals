@@ -1,4 +1,5 @@
 import math
+import cmath
 import itertools
 import copy
 
@@ -8,12 +9,19 @@ import numpy
 
 from PureGenTools import gen_chunks_as_lists, take_first_and_iter
 from TestingBasics import print_and_reduce_repetition
-
+from SegmentGeometry import lerp, lerp_confined
 
 
 def matrix_abs(matA):
+    """ abs() is used because math.hypot can't accept complex values. """
     return math.hypot(*[abs(item) for item in matA.flatten().tolist()[0]])
+    #return math.hypot(abs(matA).flatten().tolist()
 assert matrix_abs(numpy.matrix([[0, 0], [1j, 0]])) == 1.0
+
+def list_abs(input_seq):
+    return math.hypot(*[abs(item) for item in input_seq])
+    
+
     
     
 def get_normalized_matrix(matA):
@@ -33,6 +41,8 @@ assert not matrix_eq(numpy.matrix('0 1; 2 3'), numpy.matrix('5 6; 7 8'))
 
 def matrix_rows_flattened_to_list(matA):
     return matA.flatten().tolist()[0]
+def matrix_columns_flattened_to_list(matA):
+    return matrix_rows_flattened_to_list(matA.T)
 
 
 def gen_matrix_rows(matA):
@@ -93,7 +103,7 @@ def wrap_to_square_matrix_rows(input_list, use_padding=True):
         raise NotImplementedError("not allowing padding...")
 
 def wrap_to_square_matrix_columns(*args, **kwargs):
-    return wrap_to_square_matrix_columns(*args, **kwargs).T
+    return wrap_to_square_matrix_rows(*args, **kwargs).T
 
 
 def identity_matrix(side_length, *, scale=1.0):
@@ -105,6 +115,18 @@ assert (identity_matrix(3, scale=1) == numpy.matrix('1 0 0; 0 1 0; 0 0 1')).all(
 assert (identity_matrix(5, scale=3) == numpy.matrix('3 0 0 0 0; 0 3 0 0 0; 0 0 3 0 0; 0 0 0 3 0; 0 0 0 0 3')).all()
 
 
+def get_square_matrix_diagonal(matA):
+    assert matA.shape[0] == matA.shape[1]
+    return [matA[i, i] for i in range(matA.shape[0])]
+    
+def get_square_matrix_opposite_diagonal(matA):
+    assert matA.shape[0] == matA.shape[1]
+    sideLen = matA.shape[0]
+    return [matA[i, sideLen-1-i] for i in range(sideLen)]
+    
+    
+def get_row_sums(matA):
+    return [sum(row) for row in gen_matrix_rows(matA)]
 
 
 
@@ -235,4 +257,113 @@ def matrix_inv(matA):
         else:
             raise OtherMatrixInversionError(*lae.args)
     return result
-        
+
+
+def two_listvector_angle_shortest(lv0, lv1):
+    # https://www.cuemath.com/geometry/angle-between-vectors/
+    # cos(theta) = (a dot b)/(|a|*|b|)
+    # sin(theta) = (a cross b)/(|a|*|b|)
+    shorterLength = min(len(lv0), len(lv1))
+    if shorterLength == 0:
+        raise ValueError("can't work with vectors of length zero (lengths {} and {}).".format(len(lv0), len(lv1)))
+    cosVal = numpy.dot(lv0[:shorterLength], lv1[:shorterLength])/(list_abs(lv0)*list_abs(lv1))
+    return cmath.acos(cosVal)
+assert two_listvector_angle_shortest([0,1,0],[1,0,0]) == math.pi/2
+assert two_listvector_angle_shortest([0,1,0],[0,-1,0]) == math.pi
+
+
+
+
+
+
+def generic_abs(value):
+    if isinstance(value, numpy.matrix):
+        return matrix_abs(value)
+    elif isinstance(value, (tuple, list)):
+        return list_abs(value)
+    else:
+        return abs(value)
+"""
+def interleave(*args):
+    inputGens = [iter(arg) for arg in args]
+    while True:
+        for currentGenIndex, currentGen in enumerate(inputGens):
+        nextItem =
+"""
+
+def stagger_out_range(start, low_stop, high_stop):
+    if start is None:
+        assert low_stop + 1 < high_stop
+        start = low_stop + 1
+    assert low_stop < start < high_stop
+    yield start
+    for distance in itertools.count(1):
+        high, low = (start+distance, start-distance)
+        if high < high_stop:
+            yield high
+        if low > low_stop:
+            yield low
+        if not (high < high_stop or low > low_stop):
+            return
+    assert False
+    
+assert sorted(list(stagger_out_range(7,5,10))) == list(range(6,10))
+
+"""
+def minimize_bounded(fun, a, b, eq_bias=-1):
+    assert a < b
+    assert eq_bias in {-1, 0, 1}
+    bundleFun = lambda x: (x, fun(x))
+    # midpointOf = lambda x0, x1: (x0+x1)*0.5
+    # current = (bundleFun(x) for x in (a, m, b))
+    # current = tuple((x,fun(x)) for x in (a,(a+b)*0.5,b))
+    m = (a+b)*0.5
+    aBun, mBun, bBun = tuple(bundleFun(x) for x in (a,m,b))
+    if aBun[1] == bBun[1]:
+        choice = eq_bias
+    elif aBun[1] < bBun[1]:
+        choice = -1
+    else:
+        assert aBun[1] > bBun[1]:
+        choice = 1
+    if choice == 0:
+        raise ValueError("???")
+    else:
+        if choice == -1:
+            bBun, mBun = (mBun, None)
+        else:
+            assert choice == 1:
+            aBun, mBun = (mBun, None)
+        m = (a+b)*0.5
+        mBun = (m, fun(m))
+"""
+
+def _auto_inverse(fun, value, equality_distance=2**-32):
+
+    currentBest = (value, fun(value))
+    currentIdealSearchDistanceInv = None
+    
+    def genValuesToTest(val, fVal, startSearchDistanceInv=None):
+        for searchDistanceInv in stagger_out_range(startSearchDistanceInv or 2, 1, 256**2):
+            searchDistance = 1.0/searchDistanceInv
+            for testValue in [(1.0-searchDistance)*val, (1.0+searchDistance)*val, lerp_confined(val, fVal, searchDistance), lerp(val, fVal, -searchDistance)]:
+                yield (searchDistanceInv, testValue)
+    
+    for i in range(65536**2):
+        if generic_abs(value-currentBest[1]) < equality_distance:
+            return currentBest[0]
+        for testIndex, (searchDistanceInv, _testValue) in enumerate(genValuesToTest(currentBest[0], currentBest[1], startSearchDistanceInv=currentIdealSearchDistanceInv)):
+            currentTest = (_testValue, fun(_testValue))
+            if generic_abs(value - currentTest[1]) < generic_abs(value - currentBest[1]):
+                print("in step {}, test {} was successful. searchDistanceInv={}, ideal is {}.".format(i, testIndex, searchDistanceInv, currentIdealSearchDistanceInv))
+                currentIdealSearchDistanceInv = searchDistanceInv
+                currentBest = currentTest
+                break
+        else:
+            print("convergence stopped on step {} at {}.".format(i, currentTest))
+            return
+    print("convergence took too long.")
+
+
+
+

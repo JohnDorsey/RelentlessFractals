@@ -7,7 +7,8 @@ import operator
 from enum import Enum
 
 from SeqTests import get_shared_value
-from TestingBasics import assert_equal, assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError
+from TestingAtoms import assert_equal, assert_isinstance
+from TestingBasics import assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE, assert_isinstance, AssuranceError, get_exception_raised_by, get_value_returned_or_exception_raised_by
 from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
 from PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty
@@ -98,6 +99,7 @@ def find_left_min(data, enumerator_fun=enumerate):
         if item[1] < record[1]:
             record = item
     return record
+    
 assert find_left_min([-5,-7,-2,-3,-4,5,4,3,2,1]) == (1, -7)
 assert find_left_min([9,8,7,6,5,6,7,8,9]) == (4, 5)
     
@@ -110,16 +112,27 @@ def find_left_max(data, enumerator_fun=enumerate):
     return record
     
     
-def find_only_min(data, enumerator_fun=enumerate):
+def find_only_min(data, enumerator_fun=enumerate, comparison_fun=operator.lt, equality_test_fun=operator.eq):
     record, itemGen = take_first_and_iter(enumerator_fun(data))
     for item in itemGen:
-        if item[1] < record[1]:
+        if comparison_fun(item[1], record[1]):
             record = item
-        elif not item[1] > record[1]:
+        elif equality_test_fun(item[1], record[1]):
             record = (None, None)
+        else:
+            if not comparison_fun(record[1], item[1]):
+                raise ValueError("comparison_fun returned True for both orderings of the two values tested, {} and {}".format(record[1], item[1]))
+        #elif comparison_fun(record[1], item[1]):
+        #    record = (None, None)
     if record[0] is None:
         raise UndefinedExtremeChoiceError("there was more than one minimum.")
     return record
+
+assert find_only_min([-1,-2,0,1,2]) == (1, -2)
+assert find_only_min([-1,-2,0,1,2], comparison_fun=operator.gt) == (4, 2)
+assert_isinstance(get_value_returned_or_exception_raised_by(find_only_min)([-1,-2,-1,-2]), UndefinedExtremeChoiceError)
+# assert_isinstance(get_value_returned_or_exception_raised_by(find_only_min)([-2,2,-1,1,0], comparison_fun=operator.le), ValueError)
+
 
 
 """

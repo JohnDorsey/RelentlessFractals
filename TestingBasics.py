@@ -1,4 +1,5 @@
 
+import pathlib
 
 from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus
 
@@ -100,8 +101,22 @@ del testResult
 def lpack_exception_type_raised_by(fun_to_test):
     def inner(*args, **kwargs):
 """
+def get_value_returned_or_exception_raised_by(fun_to_wrap):
+    def inner(*args, **kwargs):
+        exceptionResult = None
+        try:
+            valueResult = fun_to_wrap(*args, **kwargs)
+        except Exception as e:
+            if isinstance(e, AssertionError):
+                print("TestingBasics.get_value_returned_or_exception_raised_by: warning: suppressing an AssertionError.")
+            return e
+        return valueResult
+    return inner
+        
+
 
 def get_exception_raised_by(fun_to_test):
+    print("TestingBasics.get_exception_raised_by: todo: maybe should be changed to have more obvious behavior of failing when no exception is raised.")
     def inner(*args, **kwargs):
         result = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)[0]
         assert isinstance(result, Exception) or result is None
@@ -112,13 +127,13 @@ def get_exception_raised_by(fun_to_test):
     
     
 def raises_instanceof(fun_to_test, exception_types, debug=False):
-    def inner(*args, **kwargs):
+    def raises_instanceof_inner(*args, **kwargs):
         exceptionResult = get_exception_raised_by(fun_to_test)(*args, **kwargs)
         result = isinstance(exceptionResult, exception_types)
         if debug and not result:
             print("raises_instanceof: actually got exception {}, not of type {}.".format(repr(exceptionResult), repr(exception_types)))
         return result
-    return inner
+    return raises_instanceof_inner
     
 def testRaiseIndexError(*args):
     raise IndexError()
@@ -129,17 +144,27 @@ assert raises_instanceof(str, IndexError)(1) == False
 del testRaiseIndexError
 
 
+def assure_raises_instanceof(fun_to_test, exception_types):
+    def assure_raises_instanceof_inner(*args, **kwargs):
+        resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
+        assert isinstance(resultingException, exception_types), f"assure_raises_instanceof: the wrapped function {fun_to_test.__name__} was expected to raise an instance of {exception_types}, but instead raised {repr(resultingException)=} of type {type(resultingException)} (and/or returned {resultingValue})."
+        return resultingException
+    return assure_raises_instanceof_inner
+
+
 def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
+    print("TestingBasics: warning: assert_raises_instanceof is deprecated. use assure_raises_instanceof, which performs the same test but returns the caught exception.")
+    if str(pathlib.Path.cwd()).split("/")[-1] == "Battleship":
+        assert False, "fix now"
+    else:
+        print("TestingBasics: leftover code tests whether this project is Battleship. cleanup needed.")
     if debug:
         raise NotImplementedError("can't debug.")
-    def inner(*args, **kwargs):
-        """
-        result = raises_instanceof(fun_to_test, reference_class, debug=debug)(*args, **kwargs)
-        assert result is True, (fun_to_test, reference_class, result)
-        """
+    def assert_raises_instanceof_inner(*args, **kwargs):
         resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
-        assert isinstance(resultingException, exception_types), "assert_raises_instanceof: expected exception type(s) {}, but got (exception={}, value={}).".format(exception_types, resultingException, resultingValue)
-    return inner
+        assert isinstance(resultingException, exception_types), "assert_raises_instanceof: the wrapped function {} was expected to raise {}, but instead raised (exception={}, value={}).".format(fun_to_test.__name__, exception_types, repr(resultingException), resultingValue)
+    return assert_raises_instanceof_inner
+    
 
 """
 def get_only_non_none_value(input_seq):
@@ -151,6 +176,16 @@ def get_only_non_none_value(input_seq):
     assert result is not None, "There were no non-none values."
     return result
 """
+
+        
+def assure_returns_instanceof(desired_type):
+    def assure_returns_instanceof__inner_decorator(input_fun):
+        def assure_returns_instanceof__inner_fun(*args, **kwargs):
+            result = input_fun(*args, **kwargs)
+            assert_isinstance(result, desired_type)
+            return result
+        return assure_returns_instanceof__inner_fun
+    return assure_returns_instanceof__inner_decorator
 
 
 

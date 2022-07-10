@@ -48,7 +48,7 @@ def capture_exits(input_fun):
 """
    
 
-def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
+def string_plus_pygame_key_event(string, event, caps_lock_is_on=False, shift_is_on=False):
     if event.key == pygame.K_BACKSPACE:
         return string[:-1]
         
@@ -58,10 +58,17 @@ def string_plus_pygame_key_event(string, event, caps_lock_is_on, shift_is_on):
         
     try:
         newBaseChar = chr(event.key)
-        newChar = Qwerty.apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
+        if newBaseChar in Qwerty.KEYBOARD_CHARS:
+            newChar = Qwerty.apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
+        else:
+            print("PygameDashboard.string_plus_pygame_key_event: warning: char with code {} cannot be capitalized.".format(event.key))
+            newChar = newBaseChar
         result = string + newChar
         return result
     except Exception as e:
+        if isinstance(e, AssertionError):
+            print("PygameDashboard.string_plus_pygame_key_event: AssertionError will be re-raised.")
+            raise e
         print("PygameDashboard.string_plus_pygame_key_event: unexpected {} with char with code {}: {}.".format(type(e), event.key, e))
         return string
 
@@ -153,8 +160,10 @@ class KeyStateTracker:
         return [self.get_stylized_report(keyCode, peek=peek) for keyCode in key_codes]
         
     
-    
-    
+"""
+def is_key_event(event):
+    return event.type == test_type
+"""
 
 def is_exact_key_event(event, test_type, key_code):
     if event.type == test_type:
@@ -436,9 +445,126 @@ def clear_events_of_types(event_type_seq):
         pygame.event.clear(eventtype=eventType)
         
 
+def gen_all_keydown_codes():
+    raise NotImplementedError("deprecated")
+    while True:
+        for event in pygame.event.get():
+            if is_quit_event(event):
+                print("closing pygame display as requested.")
+                pygame.display.quit()
+                return
+            if event.type == pygame.KEYDOWN:
+                yield event.key
 
 
 
+def gen_coin_sorter(input_seq, match_funs):
+    raise NotImplementedError("not tested!")
+    for item in input_seq:
+        currentResult = [(item if matchFun(item) else None) for matchFun in match_funs]
+        yield currentResult
+
+
+def coin_handler(input_seq, method_pairs, match_multiple=True):
+    raise NotImplementedError("not tested!")
+    for item in input_seq:
+        matchCount = 0
+        for matchFun, handleMethod in fun_pairs:
+            if matchFun(item):
+                matchCount += 1
+                handleMethod(item)
+                if not match_multiple:
+                    break
+        else:
+            if matchCount == 0:
+                print("coin_handler: warning: unhandled item: {}.".format(item))
+
+
+class PygameKeyboardPortableTranslator:
+    def __init__(self, translatable_chars=Qwerty.KEYBOARD_CHARS):
+        self.translatable_chars = set(translatable_chars)
+        self.key_track = KeyStateTracker(
+                [pygame.K_CAPSLOCK, "shift"],
+                key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
+                key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
+            )
+    
+    def process_event(self, event):
+        keyWasTracked = self.key_track.register_event(event)
+        if keyWasTracked:
+            return event
+
+        if event.type == pygame.KEYDOWN and chr(event.key) in self.translatable_chars:
+            capslockState, shiftState = self.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
+            return Qwerty.apply_capitalization_to_char(chr(event.key), capslockState, shiftState)
+
+        return event
+
+"""
+class PygameEventKeyboardTranslator:
+    def __init__(self, passthrough_tracked=True, passthrough_untranslatable=True, translatable_chars=Qwerty.KEYBOARD_CHARS):
+        self.passthrough_tracked, self.passthrough_untranslatable = (passthrough_tracked, passthrough_untranslatable)
+        self.translatable_chars = set(translatable_chars)
+        self.key_track = KeyStateTracker(
+                [pygame.K_CAPSLOCK, "shift"],
+                key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
+                key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
+            )
+    
+    def get_current_events(self):
+
+        for event in pygame.event.get():
+
+            keyWasTracked = self.key_track.register_event(event)
+            if keyWasTracked:
+                if self.passthrough_tracked:
+                    if chr(event.key) not in self.translatable_chars and not self.passthrough_untranslatable:
+                        print("warning: ambiguous settings, passing through a tracked event: {}.".format(event))
+                    yield event
+                continue
+
+            if event.type == pygame.KEYDOWN and chr(event.key) in self.translatable_chars:
+                capslockState, shiftState = self.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
+                yield Qwerty.apply_capitalization_to_char(chr(event.key), capslockState, shiftState)
+                continue
+            
+            if self.passthrough_untranslatable:
+                yield event
+                
+    def gen_all_events(self):
+        while True:
+            i = 0
+            for i, item in enumerate(self.get_current_events()):
+                yield item
+            
+            #if i == 0:
+            #    if empty_event is not None:
+            #        yield empty_event
+"""
+"""
+class PygameEventKeyboardRecapper:
+    def __init__(self):
+        self.translator = PygameEventKeyboardTranslator(passthrough_tracked=True, passthrough_untranslatable=True, translatable_chars=Qwerty.KEYBOARD_CHARS)
+        self.keyboard_string_storage = []
+            
+    def get_current_events(self):
+        assert len(self.keyboard_string_storage) == 0
+        result = []
+        for event in self.translator.get_current_events():
+            if isinstance(event, str):
+                self.keyboard_string_storage.append(event)
+            else:
+                assert isinstance(event, pygame.event.EventType)
+                result.append(event)
+        return result
+            
+            
+    def get_current_recap(self):
+"""
+        
+        
+            
+            
 
 def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=(128,128)):
     print("stall.")
@@ -450,15 +576,14 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=
     if clear_quit_events:
         clear_events_of_types(QUIT_EVENT_TYPES)
     
-    keyTrack = KeyStateTracker(
-        [pygame.K_CAPSLOCK, "shift"],
-        key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
-        key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
-    )
+    # pygameEventKeyboardTranslator = PygameEventKeyboardTranslator(passthrough_tracked=True)
+    pygameKeyboardPortableTranslator = PygameKeyboardPortableTranslator()
     
     monitoredComStr = MonitoredValue("", pygame.display.set_caption)
     screenRateLimiter = RateLimiter(0.1)
     eventRateLimiter = RateLimiter(1/120.0)
+    
+    # queuedKeyEvents = []
     
     while True:
         
@@ -467,25 +592,35 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=
             
         eventRateLimiter.await_approval()
         
-        for event in pygame.event.get():
+        # queuedKeyEvents.clear()
         
-            if is_quit_event(event):
-                print("closing pygame display as requested.")
-                pygame.display.quit()
-                return
+        # for event in pygameEventKeyboardTranslator.get_current_events():
+        for rawEvent in pygame.event.get():
+            event = pygameKeyboardPortableTranslator.process_event(rawEvent)
+        
+            if isinstance(event, str):
+
+                assert len(event) == 1
+                assert event in Qwerty.KEYBOARD_CHARS
+                monitoredComStr.set_sync(monitoredComStr.get()+event)
                 
-            keyWasTracked = keyTrack.register_event(event)
-            if keyWasTracked:
-                continue
+            else:
+                assert isinstance(event, pygame.event.EventType)
+        
+                if is_quit_event(event):
+                    print("closing pygame display as requested.")
+                    pygame.display.quit()
+                    return
+                    
+                if is_keydown_of(event, pygame.K_RETURN):
+                    print(__name__+">> "+monitoredComStr.get())
+                    whichever_exec(monitoredComStr.get(), preferred_exec=preferred_exec)
+                    monitoredComStr.set_sync("")
+                    continue
+                    
+                if event.type == pygame.KEYDOWN:
+                    assert chr(event.key) not in Qwerty.KEYBOARD_CHARS
+                    monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, *pygameKeyboardPortableTranslator.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])))
+                    continue
                 
-            if is_keydown_of(event, pygame.K_RETURN):
-                print(__name__+">> "+monitoredComStr.get())
-                whichever_exec(monitoredComStr.get(), preferred_exec=preferred_exec)
-                monitoredComStr.set_sync("")
-                continue
-            
-            if event.type == pygame.KEYDOWN:
-                capslockState, shiftState = keyTrack.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
-                monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, capslockState, shiftState))
-                continue
     assert False

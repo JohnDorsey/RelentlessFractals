@@ -1285,7 +1285,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     # (path_ver_plus_home_ver)                       # fxpCA(nonaboxMax)                                     # journeyWrapToMatRows_exp_unwrapRows
     # rowOfJournsToMatCols_fill(1+1j)_exp
     
-    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_wrapJournToMatRows_sin_unwrap_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
+    setSummaryStr = "{}(ini({})yld({})esc({})itr({}))_repeatJournToMatCols_sin_getRowSums_RallGincrBinci".format(buddha_type, fractal_formula["init_formula"], fractal_formula["yield_formula"], fractal_formula["esc_test"], fractal_formula["iter_formula"], custom_window_size)
     viewSummaryStr = "{}pos{}fov{}{}itrLim{}{}ptLim{}biSup{}count".format(camera.view.center_pos, camera.view.sizer, mark_if_true(iter_skip,"itrSkp"), iter_limit, mark_if_true(point_skip,"ptSkp"), point_limit, camera.bidirectional_supersampling, count_scale)
     output_name = to_portable("{}_{}_{}_".format(setSummaryStr, viewSummaryStr, COLOR_SETTINGS_SUMMARY_STR))
     print("output name is {}.".format(repr(output_name)))
@@ -1411,9 +1411,11 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # return list(limitedVisitPointGen)
             
             
-            journeyMat = MatrixMath.wrap_to_square_matrix_rows(constrainedJourney)
-            sineJourneyMat = MatrixMath.matrix_sin(journeyMat)
-            return MatrixMath.matrix_rows_flattened_to_list(sineJourneyMat)
+            #journeyMat = MatrixMath.repeat_to_square_matrix_columns(constrainedJourney)
+            #modifiedJourneyMat = MatrixMath.matrix_sin(journeyMat)
+            #return MatrixMath.matrix_rows_flattened_to_list(modifiedJourneyMat)
+            #return MatrixMath.get_row_sums(...)
+            return constrainedJourney
             """
             # exponentiatedJourneyMat = MatrixMath.matrix_exp(journeyMat)
             try:
@@ -1433,7 +1435,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
             # drawZippedPointTupleToChannels(visitCountMatrix, currentItem)
             # drawPointUsingMask(visitCountMatrix, mainPoint=currentItem[0], mask=currentItem[1])
             #if currentItem.imag < 0:
-            assert type(currentItem) == complex, type(currentItem)
+            assert isinstance(currentItem, complex), type(currentItem)
             drawPointUsingComparison(visitCountMatrix, mainPoint=currentItem, comparisonPoint=seed, draw_scale=draw_scale)
             #if seed.imag > 0:
             drawPointUsingComparison(homeOutputMatrix, mainPoint=seed, comparisonPoint=currentItem, draw_scale=draw_scale)
@@ -1993,20 +1995,20 @@ def SET_LIVE_STATUS(status_text):
         pygame.display.flip()
 
 
+if __name__ == "__main__":
+    pygame.init()
+    pygame.display.init()
 
-pygame.init()
-pygame.display.init()
+    RASTER_SIZE = (256, 256)
+    _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
-RASTER_SIZE = (1024, 1024)
-_screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
-
-COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-OUTPUT_FOLDER = "oR_sin/1024x/"
+    COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
+    OUTPUT_FOLDER = "oS_test/256x/"
 
 
-SET_LIVE_STATUS("loading...")
-IMAGE_BAND_COUNT = (4 if _screen.get_size()[1] <= 128 else (16 if _screen.get_size()[1] <= 512 else 32))
-# assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
+    SET_LIVE_STATUS("loading...")
+    IMAGE_BAND_COUNT = (4 if _screen.get_size()[1] <= 128 else (16 if _screen.get_size()[1] <= 512 else 32))
+    # assert screen.get_size()[0] == screen.get_size()[1], "are you sure about that?"
 
 
 
@@ -2036,7 +2038,7 @@ def main():
     #for customWindowSize in range(1,1024,8):
     # for subs in [64]: #, 1,32]:
     # center_pos=-0.14-0.86j, sizer=0.75+0.75j
-    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=4096, point_skip=0, point_limit=4096, count_scale=8,
+    do_buddhabrot(_screen, Camera(View(center_pos=0.0j, sizer=4+4j), screen_size=RASTER_SIZE, bidirectional_supersampling=1), iter_skip=0, iter_limit=64, point_skip=0, point_limit=64, count_scale=8,
         fractal_formula={"init_formula":"z=c", "yield_formula":"yield z", "esc_test":"abs(z)>16", "iter_formula":"z=z*z+c"}, esc_exceptions=(OverflowError, ZeroDivisionError), buddha_type="bb", banded=True, skip_origin=False, do_top_half_only=False) #  custom_window_size=customWindowSize) # w_int=wInt, w_step=1.0/wSteps)
     
     # do_panel_buddhabrot(Camera(View(0+0j, 4+4j), screen_size=screen.get_size(), bidirectional_supersampling=1), iter_limit=1024, output_iter_limit=1024, output_interval_iters=2, blank_on_output=False, count_scale=4, escape_radius=16.0, headstart="16", skip_zero_iter_image=False) # w_int=wInt, w_step=1.0/wStepCount)

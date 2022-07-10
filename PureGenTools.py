@@ -3,7 +3,7 @@ import itertools
 import collections
 
 from TestingAtoms import assert_equal, AssuranceError, AlternativeAssertionError, summon_cactus
-from TestingBasics import assert_raises_instanceof
+from TestingBasics import assure_raises_instanceof
 
 
 
@@ -24,6 +24,9 @@ def take_first_and_iter(input_seq):
         raise ProvisionError()
     return (first, inputGen)
 
+assure_raises_instanceof(take_first_and_iter, ProvisionError)([])
+assert take_first_and_iter(range(2, 10))[0] == 2
+
 
 def assert_empty(input_seq):
     inputGen = iter(input_seq)
@@ -34,13 +37,23 @@ def assert_empty(input_seq):
     assert False, "input seq was not empty, first item was {}.".format(repr(first))
 
 assert_empty((item for item in []))
+"""
 try:
     assert_empty([5])
     raise AlternativeAssertionError() # just because it is never caught, but this isn't its purpose.
 except AssertionError:
     pass
+"""
+assure_raises_instanceof(assert_empty, AssertionError)([5])
 
 
+def wrap_with(input_fun, wrapper):
+    """ this is helpful in testing whether a generator eventually raises an error. """
+    def wrap_with_inner(*args, **kwargs):
+        return wrapper(input_fun(*args, **kwargs))
+    return wrap_with_inner
+    
+assert_equal(wrap_with(sum, (lambda x: x**2))([1,2,3]), 36)
 
 
 testZip = zip("ab","cd")
@@ -49,13 +62,17 @@ testZip2 = izip_shortest("ab","cd")
 assert (iter(testZip2) is iter(testZip2)) and (not isinstance(testZip2, list)), "can't izip?"
 del testZip, testZip2
 
+
+
+
 try:
     izip_longest = itertools.izip_longest
 except AttributeError:
     izip_longest = itertools.zip_longest
 
-
+"""
 def izip_uniform(*input_seqs):
+    raise NotImplementedError("doesn't work!")
     inputGens = [iter(inputSeq) for inputSeq in input_seqs]
     outputGen = izip_shortest(*inputGens)
     for item in outputGen:
@@ -69,7 +86,48 @@ def izip_uniform(*input_seqs):
             failData.add(i)
     if len(failData)> 0:
         raise AssuranceError("The following seq(s) were not empty: {}.".format(failData))
-    
+"""
+"""
+def get_next_of_each(input_gens):
+    try:
+        return tuple(next(inputGen) for inputGen in inputGens)
+    except StopIteration:
+        raise 
+"""
+
+
+def izip_uniform(*input_seqs):
+    inputGens = list(map(iter, input_seqs))
+    currentBucket = []
+    for itemIndex in itertools.count():
+        currentBucket.clear()
+        for inputGenIndex, inputGen in enumerate(inputGens):
+            try:
+                currentBucket.append(next(inputGen))
+            except StopIteration:
+                if inputGenIndex != 0:
+                    raise AssuranceError(f"generator at index {inputGenIndex} had no item at index {itemIndex}!")
+                else:
+                    for genIndexB, genB in enumerate(inputGens):
+                        try:
+                            assert_empty(genB)
+                        except AssertionError:
+                            raise AssuranceError(f"the generators did not run out of items all at the same time, at item index {itemIndex}.")
+                    # they all ran out at the same time.
+                    return
+            # continue to next gen.
+        yield tuple(currentBucket)
+    assert False
+
+assert_equal(list(izip_uniform("abcdefg", [1,2,3,4,5,6,7])), list(zip("abcdefg", [1,2,3,4,5,6,7])))
+assure_raises_instanceof(wrap_with(izip_uniform, list), AssuranceError)("abcdefg", [1,2,3,4,5,6])
+
+
+def izip_uniform_containers(*input_containers):
+    sharedLength = len(input_containers[0])
+    assert all(hasattr(item, "__len__") for item in input_containers), f"these containers don't all have __len__. their types are {[type(item) for item in input_containers]}."
+    assert all(len(other)==sharedLength for other in input_containers[1:]), "the items don't all have the same lengths."
+    return izip_shortest(*input_containers)
 
 
 
@@ -81,15 +139,6 @@ def apply_slice_chain(data, slice_chain):
 def higher_range_linear(descriptions, *, post_slices=None):
     # this might be a reinvention of itertools.product.
     assert len(descriptions) > 0
-    """
-    if len(descriptions) == 1:
-        for i in range(*descriptions[0]):
-            yield (i,)
-    else:
-        for i in range(*descriptions[0]):
-            for extension in higher_range_linear(descriptions[1:]):
-                yield (i,) + extension
-    """
     ranges = [range(*description) for description in descriptions]
     if post_slices is not None:
         for i, (currentRange, currentSlices) in enumerate(izip_uniform(ranges, post_slices)):
@@ -185,7 +234,7 @@ def higher_range_by_corners(*, iteration_order=None, **other_kwargs):
     return higher_range(descriptions, iteration_order=iteration_order)
     
 assert_equal(list(higher_range_by_corners(start_corner=(5,50), stop_corner=(7,52))), [(5,50), (5,51), (6,50), (6,51)])
-assert_raises_instanceof(higher_range_by_corners, ValueError)(start_corner=(5,52), stop_corner=(7,50))
+assure_raises_instanceof(higher_range_by_corners, ValueError)(start_corner=(5,52), stop_corner=(7,50))
 assert_equal(list(higher_range_by_corners(start_corner=(5,52), stop_corner=(7,50), automatic_step_sign=True)), [(5,52), (5,51), (6,52), (6,51)])
 assert_equal(list(higher_range_by_corners(start_corner=(5,50), stop_corner=(7,52), iteration_order=(0,1))), [(5,50), (6,50), (5,51), (6,51)])
 
@@ -207,16 +256,23 @@ def gen_track_previous_full(input_seq, allow_waste=False):
     try:
         previousItem, inputGen = take_first_and_iter(input_seq)
     except ProvisionError:
+        raise MysteriousError("can't fill, because there are no items.")
+    try:
+        currentItem = next(inputGen)
+    except StopIteration:
         if allow_waste:
             return
         else:
-            raise MysteriousError("can't fill! not enough items!")
+            raise MysteriousError("waste would happen, but is not allowed.")
+    yield (previousItem, currentItem)
+    previousItem = currentItem
     for currentItem in inputGen:
         yield (previousItem, currentItem)
         previousItem = currentItem
         
-assert (list(gen_track_previous_full(range(5,10))) == [(5,6), (6,7), (7,8), (8,9)])
-
+assert_equal(list(gen_track_previous_full(range(5,10))), [(5,6), (6,7), (7,8), (8,9)])
+assure_raises_instanceof(wrap_with(gen_track_previous_full, list), MysteriousError)([5])
+assure_raises_instanceof(wrap_with(gen_track_previous_full, list), MysteriousError)([])
 
 
 
@@ -262,14 +318,14 @@ def gen_track_recent_full(input_seq, count=None, allow_waste=False):
             if allow_waste:
                 return ()
             else:
-                raise MysteriousError("could not do the thing!")
+                raise MysteriousError(f"not enough items to yield a full batch of {count} items.")
     assert trash.count(None) == 1
     assert trash[0] is None
     return result
     
 assert (list(gen_track_recent_full("abcdef", count=3)) == [("a","b","c"),("b","c","d"),("c","d","e"),("d","e","f")])
 assert (list(gen_track_recent_full("abc", count=5, allow_waste=True)) == [])
-    
+assure_raises_instanceof(wrap_with(gen_track_recent_full, list), MysteriousError)("abc", count=5, allow_waste=False)
     
     
     
@@ -349,26 +405,38 @@ def gen_chunks_as_lists(data, length, allow_partial=True):
             assert 0 < len(chunk) < length
             assert_empty(itemGen)
             if not allow_partial:
-                raise AssuranceError("the last chunk was partial.")
+                raise AssuranceError("the last chunk was partial. it contained {} of the required {} items.".format(len(chunk), length))
             yield chunk
             return
     assert False
     
 assert list(gen_chunks_as_lists(range(9), 2)) == [[0,1], [2,3], [4,5], [6,7], [8]]
 assert list(gen_chunks_as_lists(range(8), 2)) == [[0,1], [2,3], [4,5], [6,7]]
+assure_raises_instanceof(wrap_with(gen_chunks_as_lists, list), AssuranceError)(range(9), 2, allow_partial=False)
 
 
 
-def get_next_assuredly_last(input_gen):
+def get_next_assuredly_available(input_gen):
     try:
         result = next(input_gen)
     except StopIteration:
-        raise AssuranceError("no next item was available!")
+        raise AssuranceError("no next item was available!") from None
+    return result
+        
+assert_equal(get_next_assuredly_available(iter(range(2,5))), 2)
+assure_raises_instanceof(get_next_assuredly_available, AssuranceError)(iter(range(0)))
+        
+
+def get_next_assuredly_last(input_gen):
+    result = get_next_assuredly_available(input_gen)
     try:
         assert_empty(input_gen)
-    except AssertionError:
-        raise AssuranceError("more items remained!")
+    except AssertionError as ate:
+        raise AssuranceError(f"more items remained. assert_empty says: {ate}") from None
     return result
+
+assure_raises_instanceof(get_next_assuredly_last, AssuranceError)(iter(range(5)))
+assure_raises_instanceof(get_next_assuredly_last, AssuranceError)(iter(range(0)))
     
 
 def yield_next_assuredly_last(input_gen):
@@ -376,6 +444,7 @@ def yield_next_assuredly_last(input_gen):
 
 
 def assure_gen_length_is(input_gen, length):
+    assert length > 0
     assert iter(input_gen) is iter(input_gen)
     return itertools.chain(itertools.slice(input_gen, length-1), yield_next_assuredly_last(input_gen))
     

@@ -3,6 +3,7 @@ import operator
 
 
 from PureGenTools import take_first_and_iter, ProvisionError, gen_track_previous
+from TestingAtoms import AssuranceError
 
 
 
@@ -36,7 +37,7 @@ def get_shared_value(input_seq, equality_test_fun=operator.eq):
     result, inputGen = take_first_and_iter(input_seq)
     for i, item in enumerate(inputGen):
         if not equality_test_fun(result, item):
-            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i, repr(item), repr(result)))
+            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i+1, repr(item), repr(result)))
     return result
 
 assert get_shared_value("aaaaa") == "a"

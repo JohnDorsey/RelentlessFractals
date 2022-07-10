@@ -14,7 +14,8 @@ LMMS_PIANO_NOTE_CHAR_SET = set.union(*[set(char for char in noteStr if char != "
 
 
 def apply_capitalization_to_char(new_char, caps_lock_is_on, shift_is_on):
-    assert new_char in KEYBOARD_CHARS
+    if not new_char in KEYBOARD_CHARS:
+        raise ValueError("char {} is not in KEYBOARD_CHARS.".format(new_char))
     if new_char in KEYBOARD_LOWER_CHOOSABLES:
         if shift_is_on:
             new_char = KEYBOARD_UPPER_CHOOSABLES[KEYBOARD_LOWER_CHOOSABLES.index(new_char)]

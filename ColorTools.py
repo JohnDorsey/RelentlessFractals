@@ -57,3 +57,18 @@ def preview_inverted(input_function, test_range):
         if printIndex%8 == 0:
             print("")
             
+"""
+def make_color_bases_in_rgb(input_count):
+    # make a cone of vectors starting from the origin and summing to (1.0, 1.0, 1.0).
+    raise NotImplementedError()
+    for chi in range(3):
+        assert sum(result[chi] for result in results) == 1.0
+    return results
+"""
+def lerp_with_waypoints(input_list, t):
+    assert len(input_list) >= 2
+    assert 0 <= t <= 1
+    raise NotImplementedError()
+
+def make_color_bases_in_rgb(input_count):
+    raise NotImplementedError()

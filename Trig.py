@@ -67,9 +67,11 @@ for i in range(-1000,1000,1):
 
 
 
-
-
-
+"""
+def arccos(value):
+    # https://www.hpmuseum.org/forum/thread-410-post-2672.html#pid2672
+    if isinstance(value, complex)
+"""
     
     
     
