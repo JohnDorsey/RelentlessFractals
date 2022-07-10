@@ -17,7 +17,7 @@ import gc
 
 import pygame
 
-from TestingBasics import assert_equal, summon_cactus
+from TestingAtoms import assert_equal, summon_cactus
 
 try:
     import fxpmath
