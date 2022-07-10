@@ -33,7 +33,8 @@ from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
 import ComplexGeometry
 
-from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, higher_range, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists, higher_range_by_corners, corners_to_range_descriptions
+from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
+from HigherRangeFunctionalTools import higher_range, higher_range_by_corners, corners_to_range_descriptions
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
@@ -1306,7 +1307,7 @@ def do_buddhabrot(dest_surface, camera, iter_skip=None, iter_limit=None, point_s
     def specializedDrawAndSave(namePrefix=None):
         _specializedDraw()
         save_surface_as(dest_surface, name_prefix=namePrefix)
-        
+        pygame.display.flip()
     
     
     
