@@ -26,6 +26,25 @@ def raise_inline(error_type, message):
 
 
 
+def noneis(value, default):
+    return default if value is None else value
+    
+def noneisnew(value, default_type):
+    return default_type() if value is None else value
+
+def assure_isinstance(value, required_type):
+    assert isinstance(value, required_type), "could not assure value of type {} is instance of {}.".format(type(value), required_type)
+    return value
+
+def noneisnew_or_assure_isinstance(input_value, required_type):
+    assert isinstance(required_type, type), raise_inline(ValueError, "required_type must be a type.")
+    return assure_isinstance(noneisnew(input_value, required_type), required_type)
+
+ 
+
+
+
+
 def whichever_exec(command_string, preferred_exec=None):
     if preferred_exec is not None:
         execToUse = preferred_exec
@@ -49,169 +68,6 @@ def capture_exits(input_fun):
 """
 
 
-class SimplifiedKeyEvent:
-    def __init__(self, key, type_):
-        self.key, self.type = (key, type_)
-
-
-def string_plus_pygame_key_event(string, event, caps_lock_is_on=False, shift_is_on=False):
-    if event.key == pygame.K_BACKSPACE:
-        return string[:-1]
-        
-    if not (0 <= event.key < 256):
-        print("PygameDashboard.string_plus_pygame_key_event: ignoring extreme value {}.".format(event.key))
-        return string
-        
-    try:
-        newBaseChar = chr(event.key)
-        if newBaseChar in Qwerty.KEYBOARD_CHARS:
-            newChar = Qwerty.apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
-        else:
-            print("PygameDashboard.string_plus_pygame_key_event: warning: char with code {} cannot be capitalized.".format(event.key))
-            newChar = newBaseChar
-        result = string + newChar
-        return result
-    except Exception as e:
-        if isinstance(e, AssertionError):
-            print("PygameDashboard.string_plus_pygame_key_event: AssertionError will be re-raised.")
-            raise e
-        print("PygameDashboard.string_plus_pygame_key_event: unexpected {} with char with code {}: {}.".format(type(e), event.key, e))
-        return string
-
-assert string_plus_pygame_key_event("abcde", SimplifiedKeyEvent(pygame.K_BACKSPACE, pygame.KEYDOWN), False, False) == "abcd"
-
-
-
-
-def noneis(value, default):
-    return default if value is None else value
-    
-def noneisnew(value, default_type):
-    return default_type() if value is None else value
-
-def assure_isinstance(value, required_type):
-    assert isinstance(value, required_type), "could not assure value of type {} is instance of {}.".format(type(value), required_type)
-    return value
-
-def noneisnew_or_assure_isinstance(input_value, required_type):
-    assert isinstance(required_type, type), raise_inline(ValueError, "required_type must be a type.")
-    return assure_isinstance(noneisnew(input_value, required_type), required_type)
-
- 
-
-
-class KeyStateTracker:
-
-    def __init__(self, key_codes, key_report_styles=None, key_registration_aliases=None):
-        #  key_report_preprocessors=None
-        self.key_codes = key_codes
-        self.key_states = {code:{"is_down":False, "odd_downs":False, "odd_ups":False, "is_new":False} for code in self.key_codes}
-        self.key_report_styles = noneisnew_or_assure_isinstance(key_report_styles, dict)
-        self.key_registration_aliases = noneisnew_or_assure_isinstance(key_registration_aliases, dict)
-        # self.key_report_preprocessors = key_report_preprocessors
-        # self.key_code_aliases = noneisnew_or_assure_isinstance(key_code_aliases, dict)
-        
-    def register_event(self, event):
-        if event.type not in [pygame.KEYDOWN, pygame.KEYUP]:
-            return False
-        if event.key not in self.key_codes:
-            if event.key not in self.key_registration_aliases:
-                return False
-            else:
-                alternativeKeyCode = self.key_registration_aliases[event.key]
-                return self.register_event(SimplifiedKeyEvent(alternativeKeyCode, event.type))
-                
-        state = self.key_states[event.key]
-        if event.type == pygame.KEYDOWN:
-            state["is_down"] = True
-            state["odd_downs"] = not state["odd_downs"]
-        elif event.type == pygame.KEYUP:
-            state["is_down"] = False
-            state["odd_ups"] = not state["odd_ups"]
-        else:
-            assert False
-        state["is_new"] = True
-        return True
-        
-    def register_or_passthrough_event(self, event):
-        success = self.register_event(event)
-        if success:
-            return None
-        else:
-            return event
-            
-    def register_or_passthrough_events(self, event_seq):
-        for event in event_seq:
-            currentResult = self.register_or_passthrough_event(event)
-            if currentResult is not None:
-                yield currentResult
-    
-    def get_state(self, key_code, peek=False):
-        state = self.key_states[key_code]
-        result = copy.deepcopy(state)
-        if not peek:
-            state["is_new"] = False
-        return result
-        
-        
-    def get_stylized_report(self, key_code, peek=False):
-        if key_code not in self.key_report_styles:
-            raise KeyError("no report style set for key with code {}.".format(key_code))
-        else:
-            return self.get_state(key_code, peek=peek)[self.key_report_styles[key_code]]
-            
-    def get_stylized_reports(self, key_codes, peek=False):
-        return [self.get_stylized_report(keyCode, peek=peek) for keyCode in key_codes]
-        
-    
-"""
-def is_key_event(event):
-    return event.type == test_type
-"""
-
-def is_exact_key_event(event, test_type, key_code):
-    if event.type == test_type:
-        if event.key == key_code:
-            return True
-    return False
-    
-def is_keydown_of(event, key_code):
-    return is_exact_key_event(event, pygame.KEYDOWN, key_code)
-
-def is_keyup_of(event, key_code):
-    return is_exact_key_event(event, pygame.KEYUP, key_code)
-
-
-
-
-
-class MonitoredValue:
-    def __init__(self, initial_value, sync_callback):
-        self.latest_value = initial_value
-        self.synced_value = None
-        self.sync_callback = sync_callback
-
-    def set_async(self, value):
-        self.latest_value = value
-        
-    def set_sync(self, value):
-        self.set_async(value)
-        self.resync()
-        
-    def resync(self):
-        if self.latest_value == self.synced_value:
-            return (False, None)
-        else:
-            result = self.sync_callback(self.latest_value)
-            self.synced_value = self.latest_value
-            return (True, result)
-            
-    def get(self):
-        return self.latest_value
-        
-    def get_synced(self):
-        return self.synced_value
-        
 
 
 
@@ -438,6 +294,176 @@ assert_equal([testA.get_judgement() for i in range(10)], [False, False, True, Fa
 del testA
 
 
+
+
+
+
+class SimplifiedKeyEvent:
+    def __init__(self, key, type_):
+        self.key, self.type = (key, type_)
+
+
+def string_plus_pygame_key_event(string, event, caps_lock_is_on=False, shift_is_on=False, suppress_warnings=False, forbid_warnings=False):
+    if event.key == pygame.K_BACKSPACE:
+        return string[:-1]
+        
+    if not (0 <= event.key < 256):
+        if not suppress_warnings:
+            print("PygameDashboard.string_plus_pygame_key_event: ignoring extreme value {}.".format(event.key))
+            assert not forbid_warnings
+        return string
+        
+    try:
+        newBaseChar = chr(event.key)
+        if newBaseChar in Qwerty.KEYBOARD_CHARS:
+            newChar = Qwerty.apply_capitalization_to_char(newBaseChar, caps_lock_is_on, shift_is_on)
+        else:
+            if not suppress_warnings:
+                print("PygameDashboard.string_plus_pygame_key_event: warning: char with code {} cannot be capitalized.".format(event.key))
+                assert not forbid_warnings
+            newChar = newBaseChar
+        result = string + newChar
+        return result
+    except Exception as e:
+        if isinstance(e, AssertionError):
+            print("PygameDashboard.string_plus_pygame_key_event: AssertionError will be re-raised.")
+            raise e
+        print("PygameDashboard.string_plus_pygame_key_event: unexpected {} with char with code {}: {}.".format(type(e), event.key, e))
+        assert not forbid_warnings
+        return string
+    assert False
+
+assert string_plus_pygame_key_event("abcde", SimplifiedKeyEvent(pygame.K_BACKSPACE, pygame.KEYDOWN), False, False) == "abcd"
+
+
+
+
+
+class KeyStateTracker:
+
+    def __init__(self, key_codes, key_report_styles=None, key_registration_aliases=None):
+        #  key_report_preprocessors=None
+        self.key_codes = key_codes
+        self.key_states = {code:{"is_down":False, "odd_downs":False, "odd_ups":False, "is_new":False} for code in self.key_codes}
+        self.key_report_styles = noneisnew_or_assure_isinstance(key_report_styles, dict)
+        self.key_registration_aliases = noneisnew_or_assure_isinstance(key_registration_aliases, dict)
+        # self.key_report_preprocessors = key_report_preprocessors
+        # self.key_code_aliases = noneisnew_or_assure_isinstance(key_code_aliases, dict)
+        
+    def register_event(self, event):
+        if event.type not in [pygame.KEYDOWN, pygame.KEYUP]:
+            return False
+        if event.key not in self.key_codes:
+            if event.key not in self.key_registration_aliases:
+                return False
+            else:
+                alternativeKeyCode = self.key_registration_aliases[event.key]
+                return self.register_event(SimplifiedKeyEvent(alternativeKeyCode, event.type))
+                
+        state = self.key_states[event.key]
+        if event.type == pygame.KEYDOWN:
+            state["is_down"] = True
+            state["odd_downs"] = not state["odd_downs"]
+        elif event.type == pygame.KEYUP:
+            state["is_down"] = False
+            state["odd_ups"] = not state["odd_ups"]
+        else:
+            assert False
+        state["is_new"] = True
+        return True
+        
+    def register_or_passthrough_event(self, event):
+        success = self.register_event(event)
+        if success:
+            return None
+        else:
+            return event
+            
+    def register_or_passthrough_events(self, event_seq):
+        for event in event_seq:
+            currentResult = self.register_or_passthrough_event(event)
+            if currentResult is not None:
+                yield currentResult
+    
+    def get_state(self, key_code, peek=False):
+        state = self.key_states[key_code]
+        result = copy.deepcopy(state)
+        if not peek:
+            state["is_new"] = False
+        return result
+        
+        
+    def get_stylized_report(self, key_code, peek=False):
+        if key_code not in self.key_report_styles:
+            raise KeyError("no report style set for key with code {}.".format(key_code))
+        else:
+            return self.get_state(key_code, peek=peek)[self.key_report_styles[key_code]]
+            
+    def get_stylized_reports(self, key_codes, peek=False):
+        return [self.get_stylized_report(keyCode, peek=peek) for keyCode in key_codes]
+        
+    
+"""
+def is_key_event(event):
+    return event.type == test_type
+"""
+
+def is_exact_key_event(event, test_type, key_code):
+    if event.type == test_type:
+        if event.key == key_code:
+            return True
+    return False
+    
+def is_keydown_of(event, key_code):
+    return is_exact_key_event(event, pygame.KEYDOWN, key_code)
+
+def is_keyup_of(event, key_code):
+    return is_exact_key_event(event, pygame.KEYUP, key_code)
+
+
+
+
+
+class MonitoredValue:
+    def __init__(self, initial_value, sync_callback):
+        self.latest_value = initial_value
+        self.synced_value = None
+        self.sync_callback = sync_callback
+
+    def set_async(self, value):
+        self.latest_value = value
+        
+    def set_sync(self, value):
+        self.set_async(value)
+        self.resync()
+        
+    def resync(self):
+        if self.latest_value == self.synced_value:
+            return (False, None)
+        else:
+            result = self.sync_callback(self.latest_value)
+            self.synced_value = self.latest_value
+            return (True, result)
+            
+    def get(self):
+        return self.latest_value
+        
+    def get_synced(self):
+        return self.synced_value
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
         
         
 
@@ -505,10 +531,13 @@ class PygameKeyboardPortableTranslator:
     def shift_state(self):
         return self.key_track.get_stylized_report("shift", peek=True)
     
-    def process_event(self, event):
+    def process_event(self, event, suppress_tracked=False):
         keyWasTracked = self.key_track.register_event(event)
         if keyWasTracked:
-            return event
+            if suppress_tracked:
+                return None
+            else:
+                return event
 
         if event.type == pygame.KEYDOWN:
             if event.key in self.key_code_translations:
@@ -521,68 +550,6 @@ class PygameKeyboardPortableTranslator:
         
         
 
-"""
-class PygameEventKeyboardTranslator:
-    def __init__(self, passthrough_tracked=True, passthrough_untranslatable=True, translatable_chars=Qwerty.KEYBOARD_CHARS):
-        self.passthrough_tracked, self.passthrough_untranslatable = (passthrough_tracked, passthrough_untranslatable)
-        self.translatable_chars = set(translatable_chars)
-        self.key_track = KeyStateTracker(
-                [pygame.K_CAPSLOCK, "shift"],
-                key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
-                key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
-            )
-    
-    def get_current_events(self):
-
-        for event in pygame.event.get():
-
-            keyWasTracked = self.key_track.register_event(event)
-            if keyWasTracked:
-                if self.passthrough_tracked:
-                    if chr(event.key) not in self.translatable_chars and not self.passthrough_untranslatable:
-                        print("warning: ambiguous settings, passing through a tracked event: {}.".format(event))
-                    yield event
-                continue
-
-            if event.type == pygame.KEYDOWN and chr(event.key) in self.translatable_chars:
-                capslockState, shiftState = self.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
-                yield Qwerty.apply_capitalization_to_char(chr(event.key), capslockState, shiftState)
-                continue
-            
-            if self.passthrough_untranslatable:
-                yield event
-                
-    def gen_all_events(self):
-        while True:
-            i = 0
-            for i, item in enumerate(self.get_current_events()):
-                yield item
-            
-            #if i == 0:
-            #    if empty_event is not None:
-            #        yield empty_event
-"""
-"""
-class PygameEventKeyboardRecapper:
-    def __init__(self):
-        self.translator = PygameEventKeyboardTranslator(passthrough_tracked=True, passthrough_untranslatable=True, translatable_chars=Qwerty.KEYBOARD_CHARS)
-        self.keyboard_string_storage = []
-            
-    def get_current_events(self):
-        assert len(self.keyboard_string_storage) == 0
-        result = []
-        for event in self.translator.get_current_events():
-            if isinstance(event, str):
-                self.keyboard_string_storage.append(event)
-            else:
-                assert isinstance(event, pygame.event.EventType)
-                result.append(event)
-        return result
-            
-            
-    def get_current_recap(self):
-"""
-        
         
 class PygameKeyboardPortablePrompt:
     def __init__(self):
@@ -590,7 +557,8 @@ class PygameKeyboardPortablePrompt:
         self.current_string = ""
         
     def process_event(self, raw_event):
-        convertedEvent = self.translator.process_event(raw_event)
+        convertedEvent = self.translator.process_event(raw_event, suppress_tracked=True)
+        
         
         if isinstance(convertedEvent, str):
 
@@ -601,16 +569,21 @@ class PygameKeyboardPortablePrompt:
             else:
                 self.current_string += convertedEvent
                 assert "\b" not in self.current_string
-
+        elif convertedEvent is None: # if was tracked and suppressed (if was capslock or shift):
+            pass
         else:
             assert isinstance(convertedEvent, pygame.event.EventType), tpye(convertedEvent)
             assert not is_keydown_of(convertedEvent, pygame.K_RETURN), "key code translation should've caught this."
 
             if convertedEvent.type == pygame.KEYDOWN:
                 assert convertedEvent.key not in Qwerty.KEYBOARD_ORDS
-                self.current_string = string_plus_pygame_key_event(self.current_string, convertedEvent, self.translator.capslock_state, self.translator.shift_state)
+                self.current_string = string_plus_pygame_key_event(self.current_string, convertedEvent, self.translator.capslock_state, self.translator.shift_state, forbid_warnings=True)
         
         return convertedEvent
+            
+            
+            
+            
             
 
 class PygameQuit(Exception):
@@ -673,7 +646,7 @@ def stall_pygame(prompt_string="> ", preview_update_fun=pygame.display.set_capti
     
     while True:
         try:
-            comStr = stall_pygame_with_prompt(prompt_string=prompt_string, preview_update_fun=preview_update_fun)
+            comStr = pygame_prompt(prompt_string=prompt_string, preview_update_fun=preview_update_fun)
             whichever_exec(comStr, preferred_exec=preferred_exec)
             portable_prompt.current_string = ""
             continue
