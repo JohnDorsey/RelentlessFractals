@@ -1,4 +1,4 @@
-
+#!/usr/bin/python3
 
 
 import time
@@ -7,6 +7,7 @@ import copy
 import Qwerty
 
 import pygame
+
 
 
 
@@ -46,7 +47,12 @@ def capture_exits(input_fun):
             return
     return modifiedFun
 """
-   
+
+
+class SimplifiedKeyEvent:
+    def __init__(self, key, type_):
+        self.key, self.type = (key, type_)
+
 
 def string_plus_pygame_key_event(string, event, caps_lock_is_on=False, shift_is_on=False):
     if event.key == pygame.K_BACKSPACE:
@@ -72,6 +78,7 @@ def string_plus_pygame_key_event(string, event, caps_lock_is_on=False, shift_is_
         print("PygameDashboard.string_plus_pygame_key_event: unexpected {} with char with code {}: {}.".format(type(e), event.key, e))
         return string
 
+assert string_plus_pygame_key_event("abcde", SimplifiedKeyEvent(pygame.K_BACKSPACE, pygame.KEYDOWN), False, False) == "abcd"
 
 
 
@@ -94,9 +101,6 @@ def noneisnew_or_assure_isinstance(input_value, required_type):
 
 
 class KeyStateTracker:
-    class SimplifiedKeyEvent:
-        def __init__(self, key, _type):
-            self.key, self.type = (key, _type)
 
     def __init__(self, key_codes, key_report_styles=None, key_registration_aliases=None):
         #  key_report_preprocessors=None
@@ -115,7 +119,7 @@ class KeyStateTracker:
                 return False
             else:
                 alternativeKeyCode = self.key_registration_aliases[event.key]
-                return self.register_event(self.SimplifiedKeyEvent(alternativeKeyCode, event.type))
+                return self.register_event(SimplifiedKeyEvent(alternativeKeyCode, event.type))
                 
         state = self.key_states[event.key]
         if event.type == pygame.KEYDOWN:
@@ -480,25 +484,42 @@ def coin_handler(input_seq, method_pairs, match_multiple=True):
                 print("coin_handler: warning: unhandled item: {}.".format(item))
 
 
+
+
+
 class PygameKeyboardPortableTranslator:
-    def __init__(self, translatable_chars=Qwerty.KEYBOARD_CHARS):
+    def __init__(self, translatable_chars=Qwerty.KEYBOARD_CHARS, key_code_translations=None):
         self.translatable_chars = set(translatable_chars)
+        self.key_code_translations = noneisnew_or_assure_isinstance(key_code_translations, dict)
         self.key_track = KeyStateTracker(
                 [pygame.K_CAPSLOCK, "shift"],
                 key_report_styles={"shift":"is_down", pygame.K_CAPSLOCK:"odd_downs"},
                 key_registration_aliases={pygame.K_LSHIFT:"shift", pygame.K_RSHIFT:"shift"},
             )
+            
+    @property
+    def capslock_state(self):
+        return self.key_track.get_stylized_report(pygame.K_CAPSLOCK, peek=True)
+    
+    @property
+    def shift_state(self):
+        return self.key_track.get_stylized_report("shift", peek=True)
     
     def process_event(self, event):
         keyWasTracked = self.key_track.register_event(event)
         if keyWasTracked:
             return event
 
-        if event.type == pygame.KEYDOWN and chr(event.key) in self.translatable_chars:
-            capslockState, shiftState = self.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])
-            return Qwerty.apply_capitalization_to_char(chr(event.key), capslockState, shiftState)
+        if event.type == pygame.KEYDOWN:
+            if event.key in self.key_code_translations:
+                charToUse = self.key_code_translations[event.key]
+            elif chr(event.key) in self.translatable_chars:
+                charToUse = chr(event.key)
+            return Qwerty.apply_capitalization_to_char(charToUse, self.capslock_state, self.shift_state)
 
         return event
+        
+        
 
 """
 class PygameEventKeyboardTranslator:
@@ -563,11 +584,53 @@ class PygameEventKeyboardRecapper:
 """
         
         
-            
+class PygameKeyboardPortablePrompt:
+    def __init__(self):
+        self.translator = PygameKeyboardPortableTranslator(key_code_translations={pygame.K_RETURN:"\n"})
+        self.current_string = ""
+        
+    def process_event(self, raw_event):
+        convertedEvent = self.translator.process_event(raw_event)
+        
+        if isinstance(convertedEvent, str):
+
+            assert len(convertedEvent) == 1
+            assert convertedEvent in Qwerty.KEYBOARD_CHARS
+            if convertedEvent == "\b":
+                self.current_string = self.current_string[:-1]
+            else:
+                self.current_string += convertedEvent
+                assert "\b" not in self.current_string
+
+        else:
+            assert isinstance(convertedEvent, pygame.event.EventType), tpye(convertedEvent)
+            assert not is_keydown_of(convertedEvent, pygame.K_RETURN), "key code translation should've caught this."
+
+            if convertedEvent.type == pygame.KEYDOWN:
+                assert convertedEvent.key not in Qwerty.KEYBOARD_ORDS
+                self.current_string = string_plus_pygame_key_event(self.current_string, convertedEvent, self.translator.capslock_state, self.translator.shift_state)
+        
+        return convertedEvent
             
 
-def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=(128,128)):
+class PygameQuit(Exception):
+    pass
+
+
+portable_prompt = PygameKeyboardPortablePrompt()
+
+
+def stall_pygame_with_prompt(update_fun=None):
+    raise NotImplementedError()
+    
+
+def stall_pygame(preferred_exec=None, update_fun=None, clear_quit_events=True, autostart_display=(128,128)):
+    """
+        preferred_exec: the function that will be called to execute a command once it ends with a newline.
+    """
     print("stall.")
+    if update_fun is None:
+        update_fun = pygame.display.set_caption
     
     if autostart_display is not None:
         if pygame.display.get_surface() is None:
@@ -577,9 +640,7 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=
         clear_events_of_types(QUIT_EVENT_TYPES)
     
     # pygameEventKeyboardTranslator = PygameEventKeyboardTranslator(passthrough_tracked=True)
-    pygameKeyboardPortableTranslator = PygameKeyboardPortableTranslator()
     
-    monitoredComStr = MonitoredValue("", pygame.display.set_caption)
     screenRateLimiter = RateLimiter(0.1)
     eventRateLimiter = RateLimiter(1/120.0)
     
@@ -596,31 +657,24 @@ def stall_pygame(preferred_exec=None, clear_quit_events=True, autostart_display=
         
         # for event in pygameEventKeyboardTranslator.get_current_events():
         for rawEvent in pygame.event.get():
-            event = pygameKeyboardPortableTranslator.process_event(rawEvent)
-        
-            if isinstance(event, str):
-
-                assert len(event) == 1
-                assert event in Qwerty.KEYBOARD_CHARS
-                monitoredComStr.set_sync(monitoredComStr.get()+event)
+            if is_quit_event(rawEvent):
+                print("closing pygame display as requested.")
+                pygame.display.quit()
+                return
                 
-            else:
-                assert isinstance(event, pygame.event.EventType)
-        
-                if is_quit_event(event):
-                    print("closing pygame display as requested.")
-                    pygame.display.quit()
-                    return
-                    
-                if is_keydown_of(event, pygame.K_RETURN):
-                    print(__name__+">> "+monitoredComStr.get())
-                    whichever_exec(monitoredComStr.get(), preferred_exec=preferred_exec)
-                    monitoredComStr.set_sync("")
-                    continue
-                    
-                if event.type == pygame.KEYDOWN:
-                    assert chr(event.key) not in Qwerty.KEYBOARD_CHARS
-                    monitoredComStr.set_sync(string_plus_pygame_key_event(monitoredComStr.get(), event, *pygameKeyboardPortableTranslator.key_track.get_stylized_reports([pygame.K_CAPSLOCK, "shift"])))
-                    continue
+            _ = portable_prompt.process_event(rawEvent)
+            assert portable_prompt.current_string.count("\n") in (0,1)
+            
+            if portable_prompt.current_string.endswith("\n"):
+                whichever_exec(portable_prompt.current_string[:-1], preferred_exec=preferred_exec)
+                portable_prompt.current_string = ""
+                print(__name__+">> ")
+                continue
+            update_fun(portable_prompt.current_string)
                 
     assert False
+    
+
+if __name__ == "__main__":
+    print("running PygameDashboard demo: stall_pygame.")
+    stall_pygame()
