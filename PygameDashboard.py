@@ -620,31 +620,11 @@ class PygameQuit(Exception):
 portable_prompt = PygameKeyboardPortablePrompt()
 
 
-def stall_pygame_with_prompt(update_fun=None):
-    raise NotImplementedError()
-    
+def pygame_prompt(prompt_string="> ", preview_update_fun=pygame.display.set_caption, *, quit_return_value=None):
+    assert portable_prompt.current_string == ""
 
-def stall_pygame(preferred_exec=None, update_fun=None, clear_quit_events=True, autostart_display=(128,128)):
-    """
-        preferred_exec: the function that will be called to execute a command once it ends with a newline.
-    """
-    print("stall.")
-    if update_fun is None:
-        update_fun = pygame.display.set_caption
-    
-    if autostart_display is not None:
-        if pygame.display.get_surface() is None:
-            pygame.display.set_mode(autostart_display)
-            
-    if clear_quit_events:
-        clear_events_of_types(QUIT_EVENT_TYPES)
-    
-    # pygameEventKeyboardTranslator = PygameEventKeyboardTranslator(passthrough_tracked=True)
-    
     screenRateLimiter = RateLimiter(0.1)
     eventRateLimiter = RateLimiter(1/120.0)
-    
-    # queuedKeyEvents = []
     
     while True:
         
@@ -658,21 +638,49 @@ def stall_pygame(preferred_exec=None, update_fun=None, clear_quit_events=True, a
         # for event in pygameEventKeyboardTranslator.get_current_events():
         for rawEvent in pygame.event.get():
             if is_quit_event(rawEvent):
-                print("closing pygame display as requested.")
-                pygame.display.quit()
-                return
+                if quit_return_value is None:
+                    raise PygameQuit()
+                else:
+                    return quit_return_value
                 
             _ = portable_prompt.process_event(rawEvent)
-            assert portable_prompt.current_string.count("\n") in (0,1)
             
+            assert portable_prompt.current_string.count("\n") in (0,1)
             if portable_prompt.current_string.endswith("\n"):
-                whichever_exec(portable_prompt.current_string[:-1], preferred_exec=preferred_exec)
+                result = portable_prompt.current_string[:-1]
                 portable_prompt.current_string = ""
-                print(__name__+">> ")
-                continue
-            update_fun(portable_prompt.current_string)
+                preview_update_fun("")
+                return result
+            else:
+                preview_update_fun(prompt_string + portable_prompt.current_string)
                 
     assert False
+    
+
+def stall_pygame(prompt_string="> ", preview_update_fun=pygame.display.set_caption, preferred_exec=None, clear_quit_events=True, autostart_display=(128,128)):
+    """
+        preferred_exec: the function that will be called to execute a command once it ends with a newline.
+    """
+    print("stall.")
+    
+    if autostart_display is not None:
+        if pygame.display.get_surface() is None:
+            pygame.display.set_mode(autostart_display)
+            
+    if clear_quit_events:
+        clear_events_of_types(QUIT_EVENT_TYPES)
+    
+    
+    while True:
+        try:
+            comStr = stall_pygame_with_prompt(prompt_string=prompt_string, preview_update_fun=preview_update_fun)
+            whichever_exec(comStr, preferred_exec=preferred_exec)
+            portable_prompt.current_string = ""
+            continue
+        except PygameQuit:
+            print("closing pygame display as requested.")
+            pygame.display.quit()
+            return
     
 
 if __name__ == "__main__":
