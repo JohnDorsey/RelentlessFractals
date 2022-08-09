@@ -1,11 +1,7 @@
 #!/usr/bin/python3
 
 
-
-
-import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS'] = '1'; # https://stackoverflow.com/questions/17053671/how-do-you-stop-numpy-from-multithreading
-import numpy
-
+""" builtin imports """
 
 import time
 import math
@@ -15,9 +11,13 @@ import copy
 import random
 import gc
 
-import pygame
 
-from TestingAtoms import assert_equal, summon_cactus
+""" third-party imports """
+
+import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS'] = '1'; # https://stackoverflow.com/questions/17053671/how-do-you-stop-numpy-from-multithreading
+import numpy
+
+import pygame
 
 try:
     import fxpmath
@@ -25,30 +25,29 @@ except ImportError:
     print("fxpmath is not installed. You might not need it, though.")
     fxpmath = summon_cactus("fxpmath_was_never_imported_because_it_is_not_installed")
 
-from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
 
+""" in-project imports """
+
+from TestingAtoms import assert_equal, summon_cactus
+from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
+
+import ComplexGeometry
 from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized, float_range
 import SegmentGeometry
 from SegmentGeometry import find_left_min, lerp, reals_of, imags_of
 
-import ComplexGeometry
-
-from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
 from HigherRangeFunctionalTools import higher_range, higher_range_by_corners, corners_to_range_descriptions
+import MatrixMath
+import CGOL
+from ColorTools import atan_squish_to_byteint_unsigned_uniform_nearest
+
 
 import Trig
 sin, cos, tan = (Trig.sin, Trig.cos, Trig.tan) # short names for use only in compilation of mandel methods.
 cpx, norm = (complex, get_normalized)
 
-import CGOL
-import MatrixMath
-
-
-
-
 import PygameDashboard
 from PygameDashboard import measure_time_nicknamed
-
 
 def THIS_MODULE_EXEC(string):
     exec(string)
@@ -77,7 +76,8 @@ def shape_of(data_to_test):
             break
         data_to_test = data_to_test[0]
     return tuple(result)
-    
+
+assert shape_of([[0,1,2],[3,4,5]]) == (2, 3)
     
 
     

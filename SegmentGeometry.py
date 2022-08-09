@@ -10,7 +10,7 @@ from SeqTests import get_shared_value
 from TestingAtoms import assert_equal, assert_isinstance, AssuranceError
 from TestingBasics import get_value_returned_or_exception_raised_by
 from ApproximateTests import assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE
-from TestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
+from FuzzTestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
 from PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty
 
