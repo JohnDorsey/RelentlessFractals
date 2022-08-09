@@ -1,0 +1,3 @@
+[submodule "inlinetesting"]
+	path = inlinetesting
+	url = https://github.com/JohnDorsey/inlinetesting.git
