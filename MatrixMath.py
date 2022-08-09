@@ -7,8 +7,8 @@ import os; os.environ['OPENBLAS_NUM_THREADS'] = '1'; os.environ['MKL_NUM_THREADS
 import numpy
 # NumpyLinAlgError = numpy.linalg.LinAlgError
 
-from PureGenTools import gen_chunks_as_lists, take_first_and_iter
-from TestingBasics import print_and_reduce_repetition
+from inlinetesting.TestingBasics import print_and_reduce_repetition
+from inlinetesting.PureGenTools import gen_chunks_as_lists, take_first_and_iter
 from SegmentGeometry import lerp, lerp_confined
 
 

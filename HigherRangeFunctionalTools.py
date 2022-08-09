@@ -1,9 +1,9 @@
 
 import itertools
 
-from TestingAtoms import assert_equal, summon_cactus
-from TestingBasics import assure_raises_instanceof
-from PureGenTools import izip_uniform_containers
+from inlinetesting.TestingAtoms import assert_equal, summon_cactus
+from inlinetesting.TestingBasics import assure_raises_instanceof
+from inlinetesting.PureGenTools import izip_uniform_containers
 
 
 

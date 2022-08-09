@@ -1,6 +1,6 @@
 import math
 
-from TestingBasics import assert_single_arg_fun_obeys_dict
+from inlinetesting.TestingBasics import assert_single_arg_fun_obeys_dict
 
 CONST_2_OVER_PI = 2.0/math.pi
 CONST_510_OVER_PI = 510/math.pi

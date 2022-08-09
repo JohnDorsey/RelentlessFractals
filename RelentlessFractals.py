@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+EXIT_CODE_FILESYSTEM_ERROR = 3
+
 
 """ builtin imports """
 
@@ -10,7 +12,8 @@ import collections
 import copy
 import random
 import gc
-
+import posixpath
+import pathlib
 
 """ third-party imports """
 
@@ -28,8 +31,8 @@ except ImportError:
 
 """ in-project imports """
 
-from TestingAtoms import assert_equal, summon_cactus
-from PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
+from inlinetesting.TestingAtoms import assert_equal, summon_cactus
+from inlinetesting.PureGenTools import gen_track_previous, take_first_and_iter, gen_track_previous_full, gen_track_recent, ProvisionError, izip_longest, gen_track_recent_trimmed, enumerate_to_depth_packed, iterate_to_depth, izip_shortest, gen_chunks_as_lists
 
 import ComplexGeometry
 from ComplexGeometry import real_of, imag_of, inv_abs_of, get_complex_angle, get_normalized, float_range
@@ -167,6 +170,14 @@ def save_surface_as(surface, name_prefix="", name=None,
         name = "{}{}.png".format(round(time.monotonic(), ndigits=1), sizeStr)
     usedName = to_portable(OUTPUT_FOLDER + name_prefix + name)
     print("saving file {}.".format(usedName))
+    
+    print("WILL SAVE TO TEST FILE!")
+    # testName = "./"+usedName.split("/")[-1]
+    testName = "./test file with spaces.png"
+    print("TEST NAME IS {}.".format(testName))
+    pygame.image.save(surface, testName)
+    print("DONE SAVING TEST FILE.")
+    
     assert usedName.endswith(".png")
     pygame.image.save(surface, usedName)
     _gccollect()
@@ -2004,8 +2015,14 @@ if __name__ == "__main__":
     _screen = pygame.display.set_mode((RASTER_SIZE[0], 2*RASTER_SIZE[1]))
 
     COLOR_SETTINGS_SUMMARY_STR = "color(atan)"
-    OUTPUT_FOLDER = "oS_test/256x/"
-
+    OUTPUT_FOLDER = "./output/oS_test/256x/"
+    if not posixpath.exists(pathlib.Path(OUTPUT_FOLDER)):
+        print("OUTPUT_FOLDER {} does not exist or is a broken link.".format(repr(OUTPUT_FOLDER)))
+        exit(EXIT_CODE_FILESYSTEM_ERROR)
+    if not pathlib.Path(OUTPUT_FOLDER).is_dir():
+        print("OUTPUT_FOLDER {} is not a folder.".format(repr(OUTPUT_FOLDER)))
+        exit(EXIT_CODE_FILESYSTEM_ERROR)
+    
 
     SET_LIVE_STATUS("loading...")
     IMAGE_BAND_COUNT = (4 if _screen.get_size()[1] <= 128 else (16 if _screen.get_size()[1] <= 512 else 32))

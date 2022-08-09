@@ -1,8 +1,8 @@
 import math
 import functools
 
-import TestingBasics
-from TestingBasics import assert_equal, assert_less
+import inlinetesting.TestingBasics as TestingBasics
+from inlinetesting.TestingBasics import assert_equal, assert_less
 from ApproximateTests import assert_nearly_equal
 
 FUN_REPLACEMENT_ERROR_TOLERANCE = 10.0**-12
