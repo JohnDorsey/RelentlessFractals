@@ -593,8 +593,11 @@ class PygameQuit(Exception):
 portable_prompt = PygameKeyboardPortablePrompt()
 
 
-def pygame_prompt(prompt_string="> ", preview_update_fun=pygame.display.set_caption, *, quit_return_value=None):
+def pygame_prompt(prompt_string="> ", preview_update_fun=pygame.display.set_caption, *, quit_return_value=None, default_string=None):
     assert portable_prompt.current_string == ""
+    if default_string is not None:
+        assert isinstance(default_string, str), type(default_string)
+        portable_prompt.current_string = default_string
 
     screenRateLimiter = RateLimiter(0.1)
     eventRateLimiter = RateLimiter(1/120.0)
@@ -611,6 +614,7 @@ def pygame_prompt(prompt_string="> ", preview_update_fun=pygame.display.set_capt
         # for event in pygameEventKeyboardTranslator.get_current_events():
         for rawEvent in pygame.event.get():
             if is_quit_event(rawEvent):
+                portable_prompt.current_string = ""
                 if quit_return_value is None:
                     raise PygameQuit()
                 else:

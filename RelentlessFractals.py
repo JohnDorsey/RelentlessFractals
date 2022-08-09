@@ -76,7 +76,7 @@ def shape_of(data_to_test):
         if result[-1] == 0:
             break
         data_to_test = data_to_test[0]
-    return result
+    return tuple(result)
     
     
 
@@ -243,7 +243,7 @@ def construct_data(size, default_value=None, converter_fun=None, print_status=Fa
             result.append(construct_data(size[1:], default_value=default_value, print_status=False))
         return result
 
-assert_equal(shape_of(construct_data([5,6,7])), [5,6,7])
+assert_equal(shape_of(construct_data([5,6,7])), (5,6,7))
 
 
 def construct_numpy_data(size, default_value=None):

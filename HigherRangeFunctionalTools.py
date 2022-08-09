@@ -33,8 +33,7 @@ assert_equal(list(higher_range_linear([(2,5), (3,10,3)])), [(a,b) for a in range
 
 
 def list_in_new_order(data, new_order, *, reverse_output=False, _uninitialized=summon_cactus("error_in__list_in_new_order")):
-    if not reverse_output:
-        raise NotImplementedError("not tested with reverse_output=False")
+    """ new_order[a] gives b such that output_data[b]==input_data[a]. """
     assert len(new_order) == len(data)
     #assert sorted(new_order) == list(range(len(new_order)))
     reorderedData = [_uninitialized for i in range(len(data))]
@@ -44,7 +43,17 @@ def list_in_new_order(data, new_order, *, reverse_output=False, _uninitialized=s
         reorderedData[destIndex] = data[srcIndex]
     assert len(reorderedData) == len(new_order)
     assert _uninitialized not in reorderedData
-    return reorderedData 
+    return reorderedData
+    
+assert_equal(list_in_new_order([10,20,30,40,50], [1,4,0,2,3]), [30, 10, 40, 50, 20])
+assert_equal(list_in_new_order([10,20,30,40,50], [1,4,0,2,3], reverse_output=True), [30, 10, 40, 50, 20][::-1])
+
+def inverse_list_in_new_order(data, source_indices, reverse_output=False, _uninitialized=summon_cactus("error_in__inverse_list_in_new_order")):
+    assert len(source_indices) == len(data)
+    return [data[source_indices[i]] for i in (range(len(data)-1,-1,-1) if reverse_output else range(0,len(data)))]
+
+assert_equal(inverse_list_in_new_order([10,20,30,40,50], [1,4,0,2,3]), [20, 50, 10, 30, 40])
+assert_equal(inverse_list_in_new_order([10,20,30,40,50], [1,4,0,2,3], reverse_output=True), [40, 30, 10, 50, 20])
 
 
 def higher_range(descriptions, *, post_slices=None, iteration_order=None):

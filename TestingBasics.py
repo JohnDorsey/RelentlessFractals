@@ -2,7 +2,7 @@
 #import pathlib
 import functools
 
-from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus
+from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus, AlternativeAssertionError, MeaninglessError, raise_inline
 
 
 
@@ -43,49 +43,7 @@ def print_and_reduce_repetition(text, details="", _info=[None, 1]):
 
 
 
-"""
 
-def _dict_swiss_cheese_access(dict_list, key):
-    i = 0
-    for i, currentDict in enumerate(dict_list, 1):
-        if key in currentDict:
-            return currentDict[key]
-    raise KeyError("could not find key {} in any of {} dicts.".format(repr(key), i + 1))
-    
-assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 5) == 6
-assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 7) == 80
-assert _dict_swiss_cheese_access([{1:2, 3:4, 5:6, 9:10}, {5:60, 7:80}], 9) == 10
-
-    
-def _dict_swiss_cheese_union(dict_list):
-    assert not iter(dict_list) is iter(dict_list)
-    keySet = set()
-    for currentDict in dict_list:
-        keySet.update(set(currentDict.keys()))
-    result = dict()
-    for key in keySet:
-        result[key] = _dict_swiss_cheese_access(dict_list, key)
-    return result
-    
-assert_equal(_dict_swiss_cheese_union([{1:2, 2:4, 3:6}, {3:300, 4:400}]), {1:2, 2:4, 3:6, 4:400})
-
-
-def _non_overridably_curry_kwarg_dict(input_fun, kwarg_dict):
-    # raise NotImplementedError("not tested! also, this is a wheel reinvention of builtin partials!")
-    def inner(*args, **kwargs):
-        return input_fun(*args, **kwarg_dict, **kwargs)
-    return inner
-print("tests needed for _non_overridably_curry_kwarg_dict")
-"""
-
-
-"""
-def overridably_curry_kwarg_dict(input_fun, kwarg_dict):
-    raise NotImplementedError("not tested! also, for performance, should be done using copy and editing defaults!")
-    def inner(*args, **kwargs):
-        return input_fun(*args, **(dict_swiss_cheese_union([kwargs, kwarg_dict])))
-    return inner
-"""
 
 
 def lpack_exception_raised_by(fun_to_test):
@@ -154,9 +112,38 @@ del testRaiseIndexError
 def assure_raises_instanceof(fun_to_test, exception_types):
     def assure_raises_instanceof_inner(*args, **kwargs):
         resultingException, resultingValue = lpack_exception_raised_by(fun_to_test)(*args, **kwargs)
-        assert isinstance(resultingException, exception_types), f"assure_raises_instanceof: the wrapped function {fun_to_test.__name__} was expected to raise an instance of {exception_types}, but instead raised {repr(resultingException)=} of type {type(resultingException)} (and/or returned {resultingValue})."
+        if not isinstance(resultingException, exception_types):
+            raise AssuranceError(f"assure_raises_instanceof:\n    the wrapped function {fun_to_test.__name__} was expected to raise an instance of {exception_types},\n    but instead raised {repr(resultingException)=}\n    of type {type(resultingException)}\n    (and/or returned {resultingValue}).")
         return resultingException
     return assure_raises_instanceof_inner
+
+class AssertRaisesInstanceof:
+    def __init__(self, exception_types):
+        if not (issubclass(exception_types, Exception) or (isinstance(exception_types, tuple) and all(issubclass(item, Exception) for item in exception_types))):
+            raise AlternativeAssertionError(f"invalid Exceptions specified: {exception_types}.")
+        self.exception_types = exception_types
+        
+    def __enter__(self):
+        pass
+        
+    def __exit__(self, exc_type, exc_value, traceback_):
+        if exc_type is None:
+            # there is no exception to cancel. but one was expected, so raise an AssertionError.
+            raise AssertionError(f"AssertRaisesInstanceof required an exception of type {self.exception_types}, but did not receive any exception.")
+        assert isinstance(exc_type, type), (exc_type, exc_value, traceback_)
+        if issubclass(exc_type, self.exception_types):
+            return True # cancel the exception by returning something other than None.
+        else:
+            raise AssertionError(f"AssertRaisesInstanceof required an exception of type {self.exception_types}, but received one of type {exc_type}. {exc_value=}.")
+def _raiseValueError():
+    raise ValueError("test text")
+with AssertRaisesInstanceof(ValueError):
+    _raiseValueError()
+def _testWrongError():
+    with AssertRaisesInstanceof(IndexError):
+        _raiseValueError()
+assure_raises_instanceof(_testWrongError, AssertionError)()
+
 
 """
 def assert_raises_instanceof(fun_to_test, exception_types, debug=False):
@@ -194,6 +181,52 @@ def assure_returns_instanceof(desired_type):
             return result
         return assure_returns_instanceof__inner_fun
     return assure_returns_instanceof__inner_decorator
+
+
+
+
+    
+
+def translate_exception_type_inline(fun_to_wrap, translation_dict):
+    if not callable(fun_to_wrap):
+        raise AlternativeError("fun_to_wrap not callable.")
+    if not isinstance(translation_dict, dict):
+        raise AlternativeError("invalid translation_dict type.")
+    def inner(*args, **kwargs):
+        try:
+            result = fun_to_wrap(*args, **kwargs)
+        except Exception as e:
+            for key, value in translation_dict.items():
+                if isinstance(e, key):
+                    raise value(*e.args) from None
+            raise e from None
+        return result
+    return inner
+
+# tests for raise_inline, which is in TestingAtoms.
+assure_raises_instanceof(raise_inline, MeaninglessError)(MeaninglessError, "hello")
+assure_raises_instanceof(raise_inline, MeaninglessError)(MeaninglessError("hello"))
+
+#tests for translate_exception_type_inline
+assure_raises_instanceof(translate_exception_type_inline(raise_inline, {OverflowError:ZeroDivisionError}), ZeroDivisionError)(OverflowError, "hello")
+assure_raises_instanceof(translate_exception_type_inline(raise_inline, {OverflowError:ZeroDivisionError}), ZeroDivisionError)(ZeroDivisionError, "hello")
+assure_raises_instanceof(translate_exception_type_inline(raise_inline, {OverflowError:ZeroDivisionError}), MeaninglessError)(MeaninglessError, "hello")
+assure_raises_instanceof(translate_exception_type_inline(raise_inline, {(MeaninglessError, OverflowError):ZeroDivisionError}), ZeroDivisionError)(MeaninglessError, "hello")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -252,10 +285,31 @@ assert default_to_exception_type_raised_by(assert_single_arg_fun_obeys_dict)(int
 
 
 
+"""
+already exists and is called AssertRaisesInstanceof
+class AssertRaises:
+    def __init__(self, exception_types):
+        if (isinstance(exception_types, Exception) or (isinstance(exception_types, tuple) and all(isinstance(item, Exception) for item in exception_types))):
+            raise AlternativeAssertionError()
+        self.exception_types = exception_types
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_value, tb):
+        if not issubclass(exc_type, self.exception_types):
+            raise AssertionError("Expected {} to be raised, but {} was raised: {}.".format(self.exception_types, exc_type, exc_value)) from None
+        else:
+            return True
 
-
-
-
+with AssertRaises(ValueError):
+    raise ValueError("test")
+try:
+    with AssertRaises(ValueError):
+        raise TypeError("test")
+except AssertionError:
+    pass
+else:
+    raise AlternativeAssertionError("AssertRaises failed.")
+"""
 
 
 

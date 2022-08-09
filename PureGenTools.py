@@ -1,9 +1,9 @@
 import itertools
-
 import collections
 
 from TestingAtoms import assert_equal, AssuranceError, AlternativeAssertionError, summon_cactus
 from TestingBasics import assure_raises_instanceof
+
 
 
 
@@ -21,7 +21,7 @@ def take_first_and_iter(input_seq):
     try:
         first = next(inputGen)
     except StopIteration:
-        raise ProvisionError()
+        raise ProvisionError("could not take first item.")
     return (first, inputGen)
 
 assure_raises_instanceof(take_first_and_iter, ProvisionError)([])
@@ -34,7 +34,7 @@ def assert_empty(input_seq):
         first = next(inputGen)
     except StopIteration:
         return
-    assert False, "input seq was not empty, first item was {}.".format(repr(first))
+    assert False, "input_seq was not empty, first item was {}.".format(repr(first))
 
 assert_empty((item for item in []))
 """
@@ -124,8 +124,10 @@ assure_raises_instanceof(wrap_with(izip_uniform, list), AssuranceError)("abcdefg
 
 def izip_uniform_containers(*input_containers):
     sharedLength = len(input_containers[0])
-    assert all(hasattr(item, "__len__") for item in input_containers), f"these containers don't all have __len__. their types are {[type(item) for item in input_containers]}."
-    assert all(len(other)==sharedLength for other in input_containers[1:]), "the items don't all have the same lengths."
+    if not all(hasattr(item, "__len__") for item in input_containers):
+        raise TypeError(f"These containers don't all have __len__. Their types are {[type(item) for item in input_containers]}.")
+    if not all(len(other)==sharedLength for other in input_containers[1:]):
+        raise AssuranceError(f"The items don't all have the same lengths. Their lengths are {[len(item) for item in input_containers]}.")
     return izip_shortest(*input_containers)
 
 
@@ -190,28 +192,20 @@ assert_equal(list(gen_track_recent_trimmed("abcdef", count=3)), [("a",), ("a", "
 
 def gen_track_recent_full(input_seq, count=None, allow_waste=False):
     assert count >= 2
-    result = gen_track_recent(input_seq, count=count)
-    """
-    i, Waste = (None, None)
-    for i in range(count-1,0,-1):
-        try:
-            waste = next(result)
-            assert waste.count(None) == i
-        except StopIteration:
-            raise IndexError("could not!?")
-    assert i == 1
-    """
-    trash = tuple(None for i in range(count))
-    while trash.count(None) > 1:
+    leftSentinel = object()
+    result = gen_track_recent(input_seq, count=count, default=leftSentinel)
+
+    trash = tuple(leftSentinel for i in range(count))
+    while trash.count(leftSentinel) > 1:
         try:
             trash = next(result)
         except StopIteration:
             if allow_waste:
                 return ()
             else:
-                raise MysteriousError(f"not enough items to yield a full batch of {count} items.")
-    assert trash.count(None) == 1
-    assert trash[0] is None
+                raise MysteriousError(f"Not enough items to yield a full batch of {count} items.")
+    assert trash.count(leftSentinel) == 1
+    assert trash[0] is leftSentinel
     return result
     
 assert (list(gen_track_recent_full("abcdef", count=3)) == [("a","b","c"),("b","c","d"),("c","d","e"),("d","e","f")])
@@ -283,7 +277,7 @@ assert_equal(list(iterate_to_depth([[2,3], [4,5], [[6,7], 8, [9,10]]], depth=2))
 
 
 
-def gen_chunks_as_lists(data, length, allow_partial=True):
+def gen_chunks_as_lists(data, length, *, allow_partial=True):
     itemGen = iter(data)
     while True:
         chunk = list(itertools.islice(itemGen, 0, length))
@@ -296,7 +290,7 @@ def gen_chunks_as_lists(data, length, allow_partial=True):
             assert 0 < len(chunk) < length
             assert_empty(itemGen)
             if not allow_partial:
-                raise AssuranceError("the last chunk was partial. it contained {} of the required {} items.".format(len(chunk), length))
+                raise AssuranceError("The last chunk was partial. It contained {} of the required {} items.".format(len(chunk), length))
             yield chunk
             return
     assert False
@@ -307,31 +301,37 @@ assure_raises_instanceof(wrap_with(gen_chunks_as_lists, list), AssuranceError)(r
 
 
 
-def get_next_assuredly_available(input_gen):
+def get_next_assuredly_available(input_gen, *, too_few_exception=None):
     try:
         result = next(input_gen)
     except StopIteration:
-        raise AssuranceError("no next item was available!") from None
+        if too_few_exception is not None:
+            raise too_few_exception from None
+        else:
+            raise AssuranceError("no next item was available!") from None
     return result
         
 assert_equal(get_next_assuredly_available(iter(range(2,5))), 2)
 assure_raises_instanceof(get_next_assuredly_available, AssuranceError)(iter(range(0)))
         
 
-def get_next_assuredly_last(input_gen):
-    result = get_next_assuredly_available(input_gen)
+def get_next_assuredly_last(input_gen, *, too_few_exception=None, too_many_exception=None):
+    result = get_next_assuredly_available(input_gen, too_few_exception=too_few_exception)
     try:
         assert_empty(input_gen)
     except AssertionError as ate:
-        raise AssuranceError(f"more items remained. assert_empty says: {ate}") from None
+        if too_many_exception is not None:
+            raise too_many_exception from None
+        else:
+            raise AssuranceError(f"more items remained. assert_empty says: {ate}") from None
     return result
 
 assure_raises_instanceof(get_next_assuredly_last, AssuranceError)(iter(range(5)))
 assure_raises_instanceof(get_next_assuredly_last, AssuranceError)(iter(range(0)))
     
 
-def yield_next_assuredly_last(input_gen):
-    yield get_next_assuredly_last(input_gen)
+def yield_next_assuredly_last(input_gen, **kwargs):
+    yield get_next_assuredly_last(input_gen, **kwargs)
 
 
 def assure_gen_length_is(input_gen, length):

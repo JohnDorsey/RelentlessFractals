@@ -3,7 +3,7 @@ import operator
 
 
 from PureGenTools import take_first_and_iter, ProvisionError, gen_track_previous
-from TestingAtoms import AssuranceError
+from TestingAtoms import AssuranceError, AlternativeAssuranceError
 
 
 
@@ -21,7 +21,10 @@ assert all_are_equal_to([1], example=2) == False
 
 
 def all_are_equal(input_seq, equality_test_fun=operator.eq):
-    first, inputGen = take_first_and_iter(input_seq)
+    try:
+        first, inputGen = take_first_and_iter(input_seq)
+    except ProvisionError:
+        return True
     return all_are_equal_to(inputGen, example=first, equality_test_fun=equality_test_fun)
 
 """
@@ -33,11 +36,14 @@ del erb
 """
 
     
-def get_shared_value(input_seq, equality_test_fun=operator.eq):
-    result, inputGen = take_first_and_iter(input_seq)
+def get_shared_value(input_seq, equality_test_fun=operator.eq, message=""):
+    try:
+        result, inputGen = take_first_and_iter(input_seq)
+    except ProvisionError:
+        raise AlternativeAssuranceError("can't get shared value because there are no values."+message) from None
     for i, item in enumerate(inputGen):
         if not equality_test_fun(result, item):
-            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i+1, repr(item), repr(result)))
+            raise AssuranceError("at index {}, item value {} does not equal shared value {}.".format(i+1, repr(item), repr(result))+message)
     return result
 
 assert get_shared_value("aaaaa") == "a"
