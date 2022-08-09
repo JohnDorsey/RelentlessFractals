@@ -1,8 +1,8 @@
 import itertools
 import collections
 
-from TestingAtoms import assert_equal, AssuranceError, AlternativeAssertionError, summon_cactus
-from TestingBasics import assure_raises_instanceof
+from inlinetesting.TestingAtoms import assert_equal, AssuranceError, AlternativeAssertionError, summon_cactus
+from inlinetesting.TestingBasics import assure_raises_instanceof
 
 
 

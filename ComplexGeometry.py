@@ -4,9 +4,9 @@ from enum import Enum
 import itertools
 
 
-import TestingBasics
-from SeqTests import get_shared_value
-from TestingBasics import raises_instanceof, assert_equal, assert_isinstance, AssuranceError
+import inlinetesting.TestingBasics as TestingBasics
+from inlinetesting.TestingBasics import raises_instanceof, assure_raises_instanceof, assert_equal, assert_isinstance, AssuranceError
+from inlinetesting.SeqTests import get_shared_value
 from ApproximateTests import test_nearly_equal, assert_nearly_equal
 
 
@@ -326,7 +326,9 @@ def assure_conforms_to_clamp(value, limitPair):
     return value
 
 for testArgs in [(0,(2.1,2.2)), (2.099999,(2.1,2.2)), (2.200001,(2.1,2.2))]:
-    assert raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=True)(*testArgs), testArgs
+    if not raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=True)(*testArgs):
+        print("ComplexGeometry testing: problematic args: {}. re-testing...".format(testArgs))
+        assure_raises_instanceof(assure_conforms_to_clamp, AssuranceError)(*testArgs)
 for testArgs in [(2.1,(2.1,2.2)), (2.2,(2.1,2.2)), (2.199999,(2.1,2.2))]:
     assert not raises_instanceof(assure_conforms_to_clamp, AssuranceError, debug=False)(*testArgs), testArgs
     

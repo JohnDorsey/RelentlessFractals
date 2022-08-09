@@ -6,13 +6,14 @@ import operator
 
 from enum import Enum
 
-from SeqTests import get_shared_value
-from TestingAtoms import assert_equal, assert_isinstance, AssuranceError
-from TestingBasics import get_value_returned_or_exception_raised_by
+from inlinetesting.TestingAtoms import assert_equal, assert_isinstance, AssuranceError
+from inlinetesting.TestingBasics import get_value_returned_or_exception_raised_by
+from inlinetesting.SeqTests import get_shared_value
+
 from ApproximateTests import assert_nearly_equal, test_nearly_equal, COMPLEX_ERROR_TOLERANCE
 from FuzzTestingDecorators import basic_complex_fuzz_inputs_only, basic_complex_fuzz_io
 
-from PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty
+from inlinetesting.PureGenTools import take_first_and_iter, gen_chunks_as_lists, assert_empty
 
 import ComplexGeometry
 from ComplexGeometry import point_polar_to_rect, point_rect_to_polar, ComplexOnPolarSeam

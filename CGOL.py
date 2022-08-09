@@ -4,8 +4,8 @@ import random
 import numbers
 
 
-from TestingAtoms import assert_equal, assure_isinstance
-from PureGenTools import izip_uniform, gen_track_recent_full
+from inlinetesting.TestingAtoms import assert_equal, assure_isinstance
+from inlinetesting.PureGenTools import izip_uniform, gen_track_recent_full
 
 
 

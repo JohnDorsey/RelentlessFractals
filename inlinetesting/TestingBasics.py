@@ -2,7 +2,7 @@
 #import pathlib
 import functools
 
-from TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus, AlternativeAssertionError, MeaninglessError, raise_inline
+from inlinetesting.TestingAtoms import assert_equal, assert_less, assert_isinstance, AssuranceError, summon_cactus, AlternativeAssertionError, MeaninglessError, raise_inline
 
 
 

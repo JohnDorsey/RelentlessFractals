@@ -2,8 +2,8 @@
 import operator
 
 
-from PureGenTools import take_first_and_iter, ProvisionError, gen_track_previous
-from TestingAtoms import AssuranceError, AlternativeAssuranceError
+from inlinetesting.PureGenTools import take_first_and_iter, ProvisionError, gen_track_previous
+from inlinetesting.TestingAtoms import AssuranceError, AlternativeAssuranceError
 
 
 
